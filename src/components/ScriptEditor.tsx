@@ -1,4 +1,5 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
+import { marked } from "marked";
 import { safeInvoke, getTauriErrorMessage } from "../utils/tauri";
 import { getCurrentProject } from "../utils/project";
 import "./ScriptEditor.css";
@@ -15,6 +16,44 @@ interface ScriptEditorProps {
   onOpenSettings?: () => void;
 }
 
+type ViewMode = "edit" | "preview" | "split";
+
+// Configure marked for safe rendering
+marked.setOptions({
+  breaks: true,
+  gfm: true,
+});
+
+// SVG icons for the toolbar
+const IconEdit = () => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
+    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
+  </svg>
+);
+
+const IconEye = () => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+    <circle cx="12" cy="12" r="3" />
+  </svg>
+);
+
+const IconColumns = () => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <rect x="3" y="3" width="18" height="18" rx="2" />
+    <line x1="12" y1="3" x2="12" y2="21" />
+  </svg>
+);
+
+const IconSave = () => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z" />
+    <polyline points="17 21 17 13 7 13 7 21" />
+    <polyline points="7 3 7 8 15 8" />
+  </svg>
+);
+
 function ScriptEditor({ onAudioGenerated, onOpenSettings }: ScriptEditorProps) {
   const [script, setScript] = useState<string>("");
   const [url, setUrl] = useState<string>("");
@@ -23,20 +62,30 @@ function ScriptEditor({ onAudioGenerated, onOpenSettings }: ScriptEditorProps) {
   const [error, setError] = useState<string>("");
   const [success, setSuccess] = useState<string>("");
   const [lastSaved, setLastSaved] = useState<string>("");
+  const [viewMode, setViewMode] = useState<ViewMode>("split");
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState<boolean>(false);
 
-  // Charger le script au démarrage depuis le projet
+  // Charger le script au demarrage depuis le projet
   useEffect(() => {
     loadScript();
   }, []);
 
-  // Auto-save avec debounce
+  // Tracker les changements non sauvegardés
+  const handleScriptChange = useCallback((value: string) => {
+    setScript(value);
+    setHasUnsavedChanges(true);
+  }, []);
+
+  // Raccourci Ctrl+S pour sauvegarder
   useEffect(() => {
-    const timer = setTimeout(() => {
-      if (script.trim()) {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === "s") {
+        e.preventDefault();
         saveScript();
       }
-    }, 2000);
-    return () => clearTimeout(timer);
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
   }, [script]);
 
   const loadScript = async () => {
@@ -48,6 +97,7 @@ function ScriptEditor({ onAudioGenerated, onOpenSettings }: ScriptEditorProps) {
       const scriptPath = `${project.path}/script.md`;
       const content = await readTextFile(scriptPath);
       setScript(content);
+      setHasUnsavedChanges(false);
     } catch {
       // Le fichier n'existe pas encore, c'est normal
     }
@@ -60,20 +110,27 @@ function ScriptEditor({ onAudioGenerated, onOpenSettings }: ScriptEditorProps) {
     try {
       const { writeTextFile, mkdir } = await import("@tauri-apps/plugin-fs");
       const scriptPath = `${project.path}/script.md`;
-      
+
       // S'assurer que le dossier existe
       try {
         await mkdir(project.path, { recursive: true });
       } catch {
         // Le dossier existe déjà
       }
-      
+
       await writeTextFile(scriptPath, script);
       setLastSaved(new Date().toLocaleTimeString());
+      setHasUnsavedChanges(false);
     } catch (e) {
       console.error("Erreur sauvegarde script:", e);
     }
   };
+
+  // Rendu Markdown mémoïsé
+  const renderedMarkdown = useMemo(() => {
+    if (!script.trim()) return "";
+    return marked.parse(script) as string;
+  }, [script]);
 
   const getApiKey = useCallback((): string | null => {
     return localStorage.getItem("gemini_api_key");
@@ -82,7 +139,7 @@ function ScriptEditor({ onAudioGenerated, onOpenSettings }: ScriptEditorProps) {
   const generateScript = async () => {
     const apiKey = getApiKey();
     if (!apiKey) {
-      setError("Clé API Gemini non configurée. Allez dans les paramètres.");
+      setError("Cle API Gemini non configuree. Allez dans les parametres.");
       if (onOpenSettings) onOpenSettings();
       return;
     }
@@ -97,19 +154,17 @@ function ScriptEditor({ onAudioGenerated, onOpenSettings }: ScriptEditorProps) {
     setSuccess("");
 
     try {
-      // Étape 1: Extraire le contenu de l'URL
-      const pageContent = await safeInvoke<string>("fetch_url_content", {
+      let generatedScript = await safeInvoke<string>("generate_podcast_script", {
         url: url.trim(),
-      });
-
-      // Étape 2: Générer le script avec Gemini
-      const generatedScript = await safeInvoke<string>("generate_podcast_script", {
-        content: pageContent,
         apiKey,
       });
 
+      // Supprimer les code fences Markdown (```markdown ... ``` ou ``` ... ```)
+      generatedScript = generatedScript.replace(/^```(?:markdown|md)?\s*\n?/, "").replace(/\n?```\s*$/, "");
+
       setScript(generatedScript);
-      setSuccess("Script généré avec succès !");
+      setHasUnsavedChanges(true);
+      setSuccess("Script genere avec succes !");
       setUrl("");
     } catch (err) {
       setError(getTauriErrorMessage(err));
@@ -121,7 +176,7 @@ function ScriptEditor({ onAudioGenerated, onOpenSettings }: ScriptEditorProps) {
   const generateAudio = async () => {
     const apiKey = getApiKey();
     if (!apiKey) {
-      setError("Clé API Gemini non configurée. Allez dans les paramètres.");
+      setError("Cle API Gemini non configuree. Allez dans les parametres.");
       if (onOpenSettings) onOpenSettings();
       return;
     }
@@ -133,7 +188,7 @@ function ScriptEditor({ onAudioGenerated, onOpenSettings }: ScriptEditorProps) {
 
     const project = getCurrentProject();
     if (!project) {
-      setError("Aucun projet sélectionné");
+      setError("Aucun projet selectionne");
       return;
     }
 
@@ -143,8 +198,7 @@ function ScriptEditor({ onAudioGenerated, onOpenSettings }: ScriptEditorProps) {
 
     try {
       const { mkdir } = await import("@tauri-apps/plugin-fs");
-      
-      // Créer le dossier audio
+
       const audioDir = `${project.path}/audio`;
       try {
         await mkdir(audioDir, { recursive: true });
@@ -155,16 +209,14 @@ function ScriptEditor({ onAudioGenerated, onOpenSettings }: ScriptEditorProps) {
       const timestamp = Date.now();
       const outputPath = `${audioDir}/podcast_${timestamp}.wav`;
 
-      // Générer l'audio avec Gemini TTS
       const resultPath = await safeInvoke<string>("generate_voice", {
         text: script,
         apiKey,
         outputPath,
       });
 
-      setSuccess(`Audio généré : ${resultPath}`);
-      
-      // Estimer la durée (environ 150 mots par minute)
+      setSuccess(`Audio genere : ${resultPath}`);
+
       const wordCount = script.split(/\s+/).length;
       const estimatedDuration = (wordCount / 150) * 60;
 
@@ -178,89 +230,143 @@ function ScriptEditor({ onAudioGenerated, onOpenSettings }: ScriptEditorProps) {
     }
   };
 
+  const wordCount = useMemo(() => script.split(/\s+/).filter(w => w).length, [script]);
+  const charCount = script.length;
+  const estimatedMinutes = Math.ceil(wordCount / 150);
+
   return (
     <div className="script-editor">
-      <div className="script-editor-header">
-        <h2>📝 Éditeur de Script</h2>
-        {lastSaved && (
-          <span className="last-saved">Sauvegardé à {lastSaved}</span>
-        )}
-      </div>
+      {/* Toolbar */}
+      <div className="editor-toolbar">
+        <div className="toolbar-left">
+          <div className="url-input-group">
+            <input
+              type="url"
+              value={url}
+              onChange={(e) => setUrl(e.target.value)}
+              placeholder="https://exemple.com/article"
+              className="url-input"
+              disabled={isGenerating}
+            />
+            <button
+              onClick={generateScript}
+              disabled={isGenerating || !url.trim()}
+              className="btn btn-primary toolbar-btn"
+            >
+              {isGenerating ? (
+                <>
+                  <span className="spinner" />
+                  Generation...
+                </>
+              ) : (
+                "Generer"
+              )}
+            </button>
+          </div>
+        </div>
 
-      <div className="url-input-section">
-        <div className="url-input-group">
-          <input
-            type="url"
-            value={url}
-            onChange={(e) => setUrl(e.target.value)}
-            placeholder="https://exemple.com/article"
-            className="url-input"
-            disabled={isGenerating}
-          />
+        <div className="toolbar-center">
+          <div className="view-toggle">
+            <button
+              className={`toggle-btn ${viewMode === "edit" ? "active" : ""}`}
+              onClick={() => setViewMode("edit")}
+              title="Editeur"
+            >
+              <IconEdit />
+            </button>
+            <button
+              className={`toggle-btn ${viewMode === "split" ? "active" : ""}`}
+              onClick={() => setViewMode("split")}
+              title="Editeur + Apercu"
+            >
+              <IconColumns />
+            </button>
+            <button
+              className={`toggle-btn ${viewMode === "preview" ? "active" : ""}`}
+              onClick={() => setViewMode("preview")}
+              title="Apercu"
+            >
+              <IconEye />
+            </button>
+          </div>
+        </div>
+
+        <div className="toolbar-right">
           <button
-            onClick={generateScript}
-            disabled={isGenerating || !url.trim()}
-            className="btn-generate"
+            onClick={saveScript}
+            className={`btn btn-secondary toolbar-btn ${hasUnsavedChanges ? "btn-unsaved" : ""}`}
+            disabled={!script.trim()}
+            title="Sauvegarder (Ctrl+S)"
           >
-            {isGenerating ? (
+            <IconSave />
+            {hasUnsavedChanges ? "Sauvegarder*" : "Sauvegarde"}
+          </button>
+          <button
+            onClick={generateAudio}
+            disabled={isGeneratingAudio || !script.trim()}
+            className="btn btn-success toolbar-btn"
+          >
+            {isGeneratingAudio ? (
               <>
-                <span className="spinner"></span>
-                Génération...
+                <span className="spinner" />
+                Audio...
               </>
             ) : (
-              "🤖 Générer le script"
+              "Generer l'audio"
             )}
           </button>
         </div>
-        <p className="url-hint">
-          Collez l'URL d'un article pour générer automatiquement un script podcast
-        </p>
       </div>
 
       {error && <div className="message error">{error}</div>}
       {success && <div className="message success">{success}</div>}
 
-      <div className="script-content">
-        <textarea
-          value={script}
-          onChange={(e) => setScript(e.target.value)}
-          placeholder="Votre script de podcast apparaîtra ici...
+      {/* Editor Area */}
+      <div className={`editor-area mode-${viewMode}`}>
+        {/* Editor Pane */}
+        {viewMode !== "preview" && (
+          <div className="editor-pane">
+            <div className="pane-header">
+              <span className="pane-label">Markdown</span>
+            </div>
+            <textarea
+              value={script}
+              onChange={(e) => handleScriptChange(e.target.value)}
+              placeholder="# Mon podcast&#10;&#10;Ecrivez votre script en Markdown...&#10;&#10;## Section 1&#10;&#10;Contenu de la premiere section.&#10;&#10;## Section 2&#10;&#10;Contenu de la deuxieme section."
+              className="editor-textarea"
+              spellCheck={false}
+            />
+          </div>
+        )}
 
-Vous pouvez :
-- Générer un script depuis une URL
-- Écrire ou modifier manuellement
-- Le script est sauvegardé automatiquement"
-          className="script-textarea"
-        />
+        {/* Preview Pane */}
+        {viewMode !== "edit" && (
+          <div className="preview-pane">
+            <div className="pane-header">
+              <span className="pane-label">Apercu</span>
+            </div>
+            <div
+              className="markdown-preview"
+              dangerouslySetInnerHTML={{ __html: renderedMarkdown }}
+            />
+          </div>
+        )}
       </div>
 
-      <div className="script-editor-footer">
-        <div className="script-stats">
-          <span>{script.split(/\s+/).filter(w => w).length} mots</span>
-          <span>~{Math.ceil(script.split(/\s+/).filter(w => w).length / 150)} min</span>
+      {/* Status Bar */}
+      <div className="editor-statusbar">
+        <div className="statusbar-left">
+          <span className="status-item">{wordCount} mots</span>
+          <span className="status-item">{charCount} car.</span>
+          <span className="status-item">~{estimatedMinutes} min</span>
         </div>
-        <div className="script-actions">
-          <button
-            onClick={saveScript}
-            className="btn-secondary"
-            disabled={!script.trim()}
-          >
-            💾 Sauvegarder
-          </button>
-          <button
-            onClick={generateAudio}
-            disabled={isGeneratingAudio || !script.trim()}
-            className="btn-primary"
-          >
-            {isGeneratingAudio ? (
-              <>
-                <span className="spinner"></span>
-                Génération audio...
-              </>
-            ) : (
-              "🎙️ Générer l'audio"
-            )}
-          </button>
+        <div className="statusbar-right">
+          {lastSaved && (
+            <span className="status-saved">Sauvegarde {lastSaved}</span>
+          )}
+          {hasUnsavedChanges && (
+            <span className="status-unsaved">Modifications non sauvegardees</span>
+          )}
         </div>
       </div>
     </div>

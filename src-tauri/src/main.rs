@@ -2,9 +2,35 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 use std::process::Command;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 use base64::{Engine as _, engine::general_purpose};
+
+/// Resolve the path to a sidecar binary (ffmpeg or ffprobe).
+/// Looks next to the current executable with the Tauri target-triple suffix,
+/// then without suffix, then falls back to system PATH.
+fn sidecar_path(name: &str) -> PathBuf {
+    let target = env!("TAURI_ENV_TARGET_TRIPLE");
+    let ext = if cfg!(windows) { ".exe" } else { "" };
+
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(dir) = exe.parent() {
+            // Tauri places sidecars next to the executable with target triple
+            let with_triple = dir.join(format!("{name}-{target}{ext}"));
+            if with_triple.exists() {
+                return with_triple;
+            }
+            // Try without target triple (some bundle formats)
+            let without_triple = dir.join(format!("{name}{ext}"));
+            if without_triple.exists() {
+                return without_triple;
+            }
+        }
+    }
+
+    // Fallback: bare name → system PATH lookup
+    PathBuf::from(format!("{name}{ext}"))
+}
 
 #[derive(Serialize, Deserialize)]
 struct GeminiRequest {
@@ -353,24 +379,107 @@ async fn generate_podcast_script(url: String, api_key: String) -> Result<String,
     Ok(script)
 }
 
-// Vérifier si FFmpeg est installé
+// Générer des suggestions de scènes vidéo à partir d'un script podcast
+#[tauri::command]
+async fn generate_video_scenes(script: String, api_key: String) -> Result<String, String> {
+    println!("Génération de scènes vidéo depuis le script...");
+
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(60))
+        .build()
+        .map_err(|e| format!("Erreur création client: {}", e))?;
+
+    let prompt = format!(
+        "Analyse ce script de podcast et identifie des scènes vidéo qui pourraient l'illustrer visuellement.\n\
+        Pour chaque scène, donne:\n\
+        - description: description visuelle courte de la scène (max 100 caractères)\n\
+        - duration: durée suggérée en secondes (entre 5 et 20)\n\
+        - scriptExcerpt: l'extrait du script que cette scène illustre (max 150 caractères)\n\n\
+        Retourne UNIQUEMENT un tableau JSON valide, sans texte avant ou après.\n\
+        Identifie entre 5 et 15 scènes.\n\n\
+        Script:\n{}",
+        script
+    );
+
+    let request_body = GeminiRequest {
+        contents: vec![GeminiContent {
+            parts: vec![GeminiPart {
+                text: Some(prompt),
+                inline_data: None,
+            }],
+        }],
+    };
+
+    let api_url = format!(
+        "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={}",
+        api_key
+    );
+
+    let response = client
+        .post(&api_url)
+        .header("Content-Type", "application/json")
+        .json(&request_body)
+        .send()
+        .await
+        .map_err(|e| format!("Erreur appel Gemini API: {}", e))?;
+
+    if !response.status().is_success() {
+        let status = response.status();
+        let error_text = response.text().await.unwrap_or_else(|_| "Erreur inconnue".to_string());
+        return Err(format!("Erreur API ({}): {}", status, error_text));
+    }
+
+    let gemini_response: GeminiResponse = response
+        .json()
+        .await
+        .map_err(|e| format!("Erreur parsing réponse: {}", e))?;
+
+    let raw_text = gemini_response
+        .candidates
+        .first()
+        .and_then(|c| c.content.parts.first())
+        .and_then(|p| p.text.clone())
+        .ok_or_else(|| "Aucune scène générée".to_string())?;
+
+    // Extraire le JSON du texte (peut être entouré de ```json ... ```)
+    let json_text = if let Some(start) = raw_text.find('[') {
+        if let Some(end) = raw_text.rfind(']') {
+            &raw_text[start..=end]
+        } else {
+            &raw_text
+        }
+    } else {
+        &raw_text
+    };
+
+    // Valider que c'est du JSON valide
+    let _: serde_json::Value = serde_json::from_str(json_text)
+        .map_err(|e| format!("Réponse JSON invalide: {}", e))?;
+
+    Ok(json_text.to_string())
+}
+
+// Vérifier si FFmpeg est disponible (embarqué ou système)
 #[tauri::command]
 fn check_ffmpeg() -> Result<String, String> {
-    let output = Command::new("ffmpeg")
+    let ffmpeg = sidecar_path("ffmpeg");
+    let is_bundled = ffmpeg.is_absolute() && ffmpeg.exists();
+    let output = Command::new(&ffmpeg)
         .arg("-version")
         .output();
-    
+
     match output {
         Ok(result) => {
             if result.status.success() {
                 let version = String::from_utf8_lossy(&result.stdout);
                 let first_line = version.lines().next().unwrap_or("FFmpeg installé");
-                Ok(first_line.to_string())
+                let source = if is_bundled { " (embarqué)" } else { " (système)" };
+                Ok(format!("{}{}", first_line, source))
             } else {
                 Err("FFmpeg trouvé mais erreur lors de l'exécution".to_string())
             }
         }
-        Err(_) => Err("FFmpeg n'est pas installé ou pas dans le PATH".to_string())
+        Err(_) => Err("FFmpeg non disponible. Lancez 'bash scripts/download-ffmpeg.sh' puis relancez l'application.".to_string())
     }
 }
 
@@ -381,7 +490,7 @@ fn cut_video(input_path: String, start: f64, end: f64, output_path: String) -> R
     
     let duration = end - start;
     
-    let output = Command::new("ffmpeg")
+    let output = Command::new(sidecar_path("ffmpeg"))
         .arg("-i")
         .arg(&input_path)
         .arg("-ss")
@@ -431,7 +540,7 @@ fn merge_videos(input_paths: Vec<String>, output_path: String) -> Result<String,
     std::fs::write(&list_path, list_content)
         .map_err(|e| format!("Erreur création fichier liste: {}", e))?;
     
-    let output = Command::new("ffmpeg")
+    let output = Command::new(sidecar_path("ffmpeg"))
         .arg("-f")
         .arg("concat")
         .arg("-safe")
@@ -467,7 +576,7 @@ fn add_transition(video1: String, video2: String, transition_type: String, durat
         _ => format!("[0:v][0:a][1:v][1:a]xfade=transition=fade:duration={}:offset=0[v][a]", duration)
     };
     
-    let output = Command::new("ffmpeg")
+    let output = Command::new(sidecar_path("ffmpeg"))
         .arg("-i")
         .arg(&video1)
         .arg("-i")
@@ -498,7 +607,7 @@ fn add_transition(video1: String, video2: String, transition_type: String, durat
 // Commande pour obtenir les informations d'une vidéo
 #[tauri::command]
 fn get_video_info(video_path: String) -> Result<String, String> {
-    let output = Command::new("ffprobe")
+    let output = Command::new(sidecar_path("ffprobe"))
         .arg("-v")
         .arg("quiet")
         .arg("-print_format")
@@ -528,7 +637,7 @@ fn export_project(clips: Vec<String>, output_path: String, quality: String) -> R
     }
     
     if clips.len() == 1 {
-        let output = Command::new("ffmpeg")
+        let output = Command::new(sidecar_path("ffmpeg"))
             .arg("-i")
             .arg(&clips[0])
             .arg("-c:v")
@@ -565,7 +674,7 @@ fn export_project(clips: Vec<String>, output_path: String, quality: String) -> R
     std::fs::write(&list_path, list_content)
         .map_err(|e| format!("Erreur création fichier liste: {}", e))?;
     
-    let output = Command::new("ffmpeg")
+    let output = Command::new(sidecar_path("ffmpeg"))
         .arg("-f")
         .arg("concat")
         .arg("-safe")
@@ -595,6 +704,44 @@ fn export_project(clips: Vec<String>, output_path: String, quality: String) -> R
     }
 }
 
+/// Lire un fichier audio et retourner son contenu en base64
+/// Contourne les restrictions du plugin FS en utilisant std::fs directement
+#[tauri::command]
+fn read_audio_file(file_path: String) -> Result<String, String> {
+    let path = Path::new(&file_path);
+
+    if !path.exists() {
+        return Err(format!("Fichier introuvable: {}", file_path));
+    }
+
+    let bytes = std::fs::read(path)
+        .map_err(|e| format!("Erreur lecture fichier {}: {}", file_path, e))?;
+
+    if bytes.is_empty() {
+        return Err(format!("Fichier vide: {}", file_path));
+    }
+
+    let b64 = general_purpose::STANDARD.encode(&bytes);
+
+    // Déterminer le type MIME
+    let ext = path.extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("")
+        .to_lowercase();
+
+    let mime = match ext.as_str() {
+        "wav" => "audio/wav",
+        "mp3" => "audio/mpeg",
+        "m4a" => "audio/mp4",
+        "ogg" => "audio/ogg",
+        "flac" => "audio/flac",
+        _ => "audio/mpeg",
+    };
+
+    // Retourner en data URI
+    Ok(format!("data:{};base64,{}", mime, b64))
+}
+
 #[tokio::main]
 async fn main() {
     tauri::Builder::default()
@@ -603,13 +750,15 @@ async fn main() {
         .plugin(tauri_plugin_fs::init())
         .invoke_handler(tauri::generate_handler![
             generate_podcast_script,
+            generate_video_scenes,
             generate_voice,
             check_ffmpeg,
             cut_video,
             merge_videos,
             add_transition,
             get_video_info,
-            export_project
+            export_project,
+            read_audio_file
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

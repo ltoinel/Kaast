@@ -12,9 +12,9 @@
   "app": {
     "windows": [
       {
-        "title": "Kaast",
-        "width": 1200,
-        "height": 800,
+        "title": "Kaast v0.1.0",
+        "width": 1400,
+        "height": 900,
         "minWidth": 800,
         "minHeight": 600,
         "resizable": true,
@@ -22,12 +22,23 @@
       }
     ],
     "security": {
-      "csp": null
+      "csp": null,
+      "assetProtocol": {
+        "enable": true,
+        "scope": {
+          "allow": ["**"],
+          "deny": []
+        }
+      }
     }
   },
   "bundle": {
     "active": true,
     "targets": "all",
+    "externalBin": [
+      "binaries/ffmpeg",
+      "binaries/ffprobe"
+    ],
     "category": "Video",
     "icon": [
       "icons/32x32.png",
@@ -40,6 +51,17 @@
       "certificateThumbprint": null,
       "digestAlgorithm": "sha256",
       "timestampUrl": ""
+    },
+    "linux": {
+      "deb": {
+        "depends": []
+      },
+      "rpm": {
+        "depends": []
+      },
+      "appimage": {
+        "bundleMediaFramework": false
+      }
     },
     "macOS": {
       "entitlements": null,

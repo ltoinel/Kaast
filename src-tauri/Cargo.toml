@@ -1,7 +1,7 @@
 [package]
 name = "kaast"
 version = "0.1.0"
-description = "Kaast : un éditeur vidéo moderne pour Windows et macOS"
+description = "Kaast : un éditeur de podcasts avec IA pour Windows, Linux et macOS"
 authors = ["vous"]
 edition = "2021"
 
@@ -9,7 +9,7 @@ edition = "2021"
 tauri-build = { version = "2.0", features = [] }
 
 [dependencies]
-tauri = { version = "2.0", features = [] }
+tauri = { version = "2.0", features = ["protocol-asset"] }
 tauri-plugin-shell = "2.0"
 tauri-plugin-dialog = "2.0"
 tauri-plugin-fs = "2.0"

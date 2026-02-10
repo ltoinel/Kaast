@@ -55,32 +55,20 @@ export async function convertToAssetUrl(filePath: string): Promise<string> {
   }
 }
 
-// Charger un fichier audio en tant que Blob URL (plus fiable)
+// Révoquer une Blob URL pour libérer la mémoire
+export function revokeBlobUrl(url: string | null): void {
+  if (url && url.startsWith('blob:')) {
+    URL.revokeObjectURL(url);
+  }
+}
+
+// Charger un fichier audio via la commande Rust (contourne le scope FS)
 export async function loadAudioAsBlob(filePath: string): Promise<string> {
   if (!isTauriAvailable()) {
     throw new Error("Tauri non disponible");
   }
 
-  try {
-    const { readFile } = await import('@tauri-apps/plugin-fs');
-    const bytes = await readFile(filePath);
-    
-    // Déterminer le type MIME
-    const ext = filePath.split('.').pop()?.toLowerCase() || '';
-    const mimeTypes: Record<string, string> = {
-      'mp3': 'audio/mpeg',
-      'wav': 'audio/wav',
-      'm4a': 'audio/mp4',
-      'ogg': 'audio/ogg',
-      'flac': 'audio/flac',
-    };
-    const mimeType = mimeTypes[ext] || 'audio/mpeg';
-    
-    // Créer un Blob et une URL
-    const blob = new Blob([bytes], { type: mimeType });
-    return URL.createObjectURL(blob);
-  } catch (error) {
-    console.error("Erreur chargement audio:", error);
-    throw error;
-  }
+  // Méthode principale : commande Rust qui retourne un data URI
+  const dataUri = await safeInvoke<string>('read_audio_file', { filePath });
+  return dataUri;
 }

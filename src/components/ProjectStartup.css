@@ -1,5 +1,5 @@
 /* Project Startup Dialog */
-.project-startup-overlay {
+.project-startup {
   position: fixed;
   inset: 0;
   display: flex;
@@ -16,7 +16,7 @@
   to { opacity: 1; }
 }
 
-.project-startup-dialog {
+.startup-dialog {
   width: 90%;
   max-width: 560px;
   background: var(--bg-secondary);
@@ -45,18 +45,6 @@
   background: var(--bg-tertiary);
 }
 
-.startup-logo {
-  width: 56px;
-  height: 56px;
-  margin: 0 auto var(--spacing-md);
-  background: var(--accent-primary);
-  border-radius: var(--radius-md);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 1.75rem;
-}
-
 .startup-header h1 {
   margin: 0 0 var(--spacing-xs);
   font-size: 1.5rem;
@@ -70,17 +58,12 @@
   color: var(--text-muted);
 }
 
-/* Content */
-.startup-content {
-  padding: 0 var(--spacing-2xl) var(--spacing-2xl);
-}
-
 /* Action Cards */
 .startup-actions {
   display: flex;
   flex-direction: column;
   gap: var(--spacing-md);
-  margin-bottom: var(--spacing-xl);
+  padding: var(--spacing-xl) var(--spacing-2xl);
 }
 
 .action-card {
@@ -93,6 +76,8 @@
   border-radius: var(--radius-lg);
   cursor: pointer;
   transition: all var(--transition-normal);
+  width: 100%;
+  text-align: left;
 }
 
 .action-card:hover {
@@ -104,7 +89,7 @@
   opacity: 0.9;
 }
 
-.action-card.primary:hover {
+.action-card.create:hover {
   border-color: var(--accent-primary);
 }
 
@@ -121,71 +106,39 @@
   color: var(--text-secondary);
 }
 
-.action-card.primary .action-icon {
+.action-card.create .action-icon {
   background: var(--bg-active);
   color: var(--accent-primary);
 }
 
-.action-text {
-  flex: 1;
-}
-
-.action-text h3 {
-  margin: 0 0 2px;
+.action-title {
+  display: block;
   font-size: 1rem;
   font-weight: 600;
   color: var(--text-primary);
+  margin-bottom: 2px;
 }
 
-.action-text p {
-  margin: 0;
+.action-desc {
+  display: block;
   font-size: 0.8rem;
   color: var(--text-muted);
-}
-
-.action-arrow {
-  color: var(--text-muted);
-  font-size: 1rem;
-  opacity: 0;
-  transition: opacity var(--transition-fast);
-}
-
-.action-card:hover .action-arrow {
-  opacity: 1;
-}
-
-/* Divider */
-.startup-divider {
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-md);
-  margin: var(--spacing-lg) 0;
-  color: var(--text-muted);
-  font-size: 0.75rem;
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
-}
-
-.startup-divider::before,
-.startup-divider::after {
-  content: '';
-  flex: 1;
-  height: 1px;
-  background: var(--border-subtle);
 }
 
 /* Recent Projects */
 .recent-projects {
   background: var(--bg-tertiary);
   border-radius: var(--radius-lg);
+  margin: 0 var(--spacing-2xl) var(--spacing-2xl);
   overflow: hidden;
 }
 
-.recent-header {
+.recent-projects h3 {
   display: flex;
   align-items: center;
   gap: var(--spacing-sm);
   padding: var(--spacing-md) var(--spacing-lg);
+  margin: 0;
   background: var(--bg-primary);
   font-size: 0.75rem;
   font-weight: 600;
@@ -194,49 +147,41 @@
   color: var(--text-muted);
 }
 
-.recent-list {
-  max-height: 180px;
+.recent-projects ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 200px;
   overflow-y: auto;
 }
 
-.recent-item {
-  display: flex;
-  align-items: center;
-  gap: var(--spacing-md);
-  padding: var(--spacing-md) var(--spacing-lg);
-  cursor: pointer;
-  transition: all var(--transition-fast);
+.recent-projects li {
   border-bottom: 1px solid var(--border-subtle);
 }
 
-.recent-item:last-child {
+.recent-projects li:last-child {
   border-bottom: none;
 }
 
-.recent-item:hover {
+.project-item {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-md);
+  width: 100%;
+  padding: var(--spacing-md) var(--spacing-lg);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  text-align: left;
+}
+
+.project-item:hover {
   background: var(--bg-hover);
 }
 
-.recent-icon {
-  flex-shrink: 0;
-  width: 36px;
-  height: 36px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--bg-secondary);
-  border-radius: var(--radius-sm);
-  font-size: 1rem;
-  color: var(--accent-primary);
-}
-
-.recent-info {
+.project-name {
   flex: 1;
-  min-width: 0;
-}
-
-.recent-info h4 {
-  margin: 0;
   font-size: 0.9rem;
   font-weight: 500;
   color: var(--text-primary);
@@ -245,26 +190,30 @@
   text-overflow: ellipsis;
 }
 
-.recent-info span {
+.project-item .project-path {
   font-size: 0.75rem;
   color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 200px;
 }
 
-.recent-empty {
-  padding: var(--spacing-xl);
-  text-align: center;
+.project-date {
+  flex-shrink: 0;
+  font-size: 0.7rem;
   color: var(--text-muted);
-  font-size: 0.85rem;
 }
 
-/* Project Form */
-.project-form {
+/* Create Form */
+.create-form {
   display: flex;
   flex-direction: column;
   gap: var(--spacing-lg);
+  padding: var(--spacing-xl) var(--spacing-2xl) var(--spacing-2xl);
 }
 
-.form-group label {
+.create-form label {
   display: block;
   margin-bottom: var(--spacing-sm);
   font-size: 0.85rem;
@@ -272,7 +221,7 @@
   color: var(--text-primary);
 }
 
-.form-group input {
+.create-form input {
   width: 100%;
   padding: var(--spacing-md) var(--spacing-lg);
   border: 1px solid var(--border-default);
@@ -283,42 +232,24 @@
   transition: all var(--transition-normal);
 }
 
-.form-group input:focus {
+.create-form input:focus {
   outline: none;
   border-color: var(--accent-primary);
   box-shadow: 0 0 0 3px var(--accent-primary-muted);
 }
 
-.form-group input::placeholder {
+.create-form input::placeholder {
   color: var(--text-muted);
 }
 
-.path-input-group {
-  display: flex;
-  gap: var(--spacing-sm);
-}
-
-.path-input-group input {
-  flex: 1;
-}
-
-.btn-browse {
-  flex-shrink: 0;
-  padding: var(--spacing-md) var(--spacing-lg);
-  background: var(--bg-hover);
-  border: 1px solid var(--border-default);
-  border-radius: var(--radius-md);
-  color: var(--text-secondary);
-  font-size: 0.85rem;
-  font-weight: 500;
-  cursor: pointer;
-  transition: all var(--transition-normal);
-}
-
-.btn-browse:hover {
-  background: var(--bg-tertiary);
-  border-color: var(--border-strong);
-  color: var(--text-primary);
+/* Error Message */
+.error-message {
+  padding: var(--spacing-sm) var(--spacing-md);
+  background: var(--accent-error-muted);
+  border-radius: var(--radius-sm);
+  color: var(--accent-error);
+  font-size: 0.8rem;
+  margin: 0 var(--spacing-2xl) var(--spacing-lg);
 }
 
 /* Form Actions */
@@ -328,52 +259,18 @@
   margin-top: var(--spacing-md);
 }
 
-.btn-cancel {
+.form-actions .btn-secondary,
+.form-actions .btn-primary {
   flex: 1;
   padding: var(--spacing-md);
-  background: transparent;
-  border: 1px solid var(--border-default);
   border-radius: var(--radius-md);
-  color: var(--text-secondary);
   font-size: 0.9rem;
   font-weight: 500;
-  cursor: pointer;
-  transition: all var(--transition-normal);
-}
-
-.btn-cancel:hover {
-  background: var(--bg-hover);
-  border-color: var(--border-strong);
-  color: var(--text-primary);
-}
-
-.btn-create {
-  flex: 1;
-  padding: var(--spacing-md);
-  background: var(--accent-primary);
-  border: none;
-  border-radius: var(--radius-md);
-  color: white;
-  font-size: 0.9rem;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all var(--transition-normal);
-}
-
-.btn-create:hover:not(:disabled) {
-  background: var(--accent-primary-hover);
-  transform: translateY(-1px);
-  box-shadow: var(--shadow-md);
-}
-
-.btn-create:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
 }
 
 /* Responsive */
 @media (max-width: 500px) {
-  .project-startup-dialog {
+  .startup-dialog {
     width: 95%;
     max-height: 90vh;
     overflow-y: auto;
@@ -383,21 +280,20 @@
     padding: var(--spacing-xl) var(--spacing-lg) var(--spacing-md);
   }
 
-  .startup-content {
-    padding: 0 var(--spacing-lg) var(--spacing-lg);
+  .startup-actions {
+    padding: var(--spacing-lg);
+  }
+
+  .recent-projects {
+    margin: 0 var(--spacing-lg) var(--spacing-lg);
+  }
+
+  .create-form {
+    padding: var(--spacing-lg);
   }
 
   .action-card {
     padding: var(--spacing-md);
-  }
-
-  .action-icon {
-    width: 40px;
-    height: 40px;
-  }
-
-  .path-input-group {
-    flex-direction: column;
   }
 
   .form-actions {

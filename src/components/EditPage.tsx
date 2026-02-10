@@ -1,17 +1,20 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import "./EditPage.css";
-import Timeline, { AudioClip, VideoClip } from "./Timeline";
-import { convertToAssetUrl, loadAudioAsBlob } from "../utils/tauri";
+import type { AudioClip, VideoClip } from "../types";
+import Timeline from "./Timeline";
+import { convertToAssetUrl, loadAudioAsBlob, revokeBlobUrl } from "../utils/tauri";
 
 interface EditPageProps {
   audioClips: AudioClip[];
   videoClips: VideoClip[];
   onAddMedia?: () => void;
+  onDeleteClip?: (clipId: string, type: "audio" | "video") => void;
   projectPath?: string;
 }
 
-function EditPage({ audioClips, videoClips, onAddMedia }: EditPageProps) {
+function EditPage({ audioClips, videoClips, onAddMedia, onDeleteClip }: EditPageProps) {
   const [selectedClip, setSelectedClip] = useState<AudioClip | VideoClip | null>(null);
+  const [selectedClipType, setSelectedClipType] = useState<"audio" | "video" | null>(null);
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
   const [currentTime, setCurrentTime] = useState<number>(0);
   const [duration, setDuration] = useState<number>(0);
@@ -20,7 +23,6 @@ function EditPage({ audioClips, videoClips, onAddMedia }: EditPageProps) {
   const [currentVideoSrc, setCurrentVideoSrc] = useState<string | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const audioRef = useRef<HTMLAudioElement>(null);
-  const playIntervalRef = useRef<number | null>(null);
 
   // Calculer la durée totale du projet
   useEffect(() => {
@@ -47,18 +49,29 @@ function EditPage({ audioClips, videoClips, onAddMedia }: EditPageProps) {
         const firstClip = audioClips[0];
         try {
           const url = await loadAudioAsBlob(firstClip.path);
-          console.log("Audio chargé en blob:", url);
           setCurrentAudioSrc(url);
+          if (audioRef.current) {
+            audioRef.current.src = url;
+            audioRef.current.load();
+          }
         } catch (err) {
           console.error("Erreur chargement audio:", err);
-          // Fallback vers convertToAssetUrl
-          const url = await convertToAssetUrl(firstClip.path);
-          setCurrentAudioSrc(url);
+          try {
+            const url = await convertToAssetUrl(firstClip.path);
+            setCurrentAudioSrc(url);
+            if (audioRef.current) {
+              audioRef.current.src = url;
+              audioRef.current.load();
+            }
+          } catch (e) {
+            console.error("Fallback échoué:", e);
+          }
         }
       }
     };
     loadFirstClip();
-  }, [audioClips, currentAudioSrc]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [audioClips]);
 
   // Charger le premier clip vidéo quand disponible
   useEffect(() => {
@@ -70,7 +83,17 @@ function EditPage({ audioClips, videoClips, onAddMedia }: EditPageProps) {
       }
     };
     loadFirstVideoClip();
-  }, [videoClips, currentVideoSrc]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [videoClips]);
+
+  // Cleanup blob URLs on unmount
+  useEffect(() => {
+    return () => {
+      revokeBlobUrl(currentAudioSrc);
+      revokeBlobUrl(currentVideoSrc);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Configurer l'audio source
   useEffect(() => {
@@ -82,45 +105,39 @@ function EditPage({ audioClips, videoClips, onAddMedia }: EditPageProps) {
 
   const handlePlayPause = useCallback(async () => {
     const audio = audioRef.current;
-    if (!audio) {
-      console.error("Pas d'élément audio");
-      return;
-    }
-
-    console.log("handlePlayPause - isPlaying:", isPlaying, "audioClips:", audioClips.length, "currentAudioSrc:", currentAudioSrc);
+    if (!audio) return;
 
     if (isPlaying) {
       audio.pause();
-      if (playIntervalRef.current) {
-        clearInterval(playIntervalRef.current);
-        playIntervalRef.current = null;
-      }
       setIsPlaying(false);
     } else {
-      // S'assurer qu'on a une source audio
-      if (!audio.src && audioClips.length > 0) {
-        try {
-          const url = await loadAudioAsBlob(audioClips[0].path);
-          console.log("Chargement audio blob URL:", url);
-          audio.src = url;
-          setCurrentAudioSrc(url);
-        } catch (err) {
-          console.error("Erreur chargement blob:", err);
+      // Vérifier qu'on a une source
+      if (!audio.src || audio.src === window.location.href) {
+        if (audioClips.length > 0) {
+          try {
+            const url = await loadAudioAsBlob(audioClips[0].path);
+            revokeBlobUrl(currentAudioSrc);
+            audio.src = url;
+            audio.load();
+            setCurrentAudioSrc(url);
+            await new Promise((resolve) => {
+              audio.addEventListener('canplay', resolve, { once: true });
+            });
+          } catch (err) {
+            console.error("Erreur chargement:", err);
+            return;
+          }
+        } else {
+          return;
         }
       }
-      
-      console.log("Audio src:", audio.src, "readyState:", audio.readyState);
-      
-      if (audio.src) {
+
+      try {
         audio.currentTime = currentTime;
-        audio.play().then(() => {
-          console.log("Lecture démarrée");
-          setIsPlaying(true);
-        }).catch(err => {
-          console.error("Erreur lecture audio:", err);
-        });
-      } else {
-        console.error("Pas de source audio disponible");
+        await audio.play();
+        setIsPlaying(true);
+      } catch (err) {
+        console.error("Erreur play():", err);
       }
     }
   }, [isPlaying, currentTime, audioClips, currentAudioSrc]);
@@ -130,10 +147,6 @@ function EditPage({ audioClips, videoClips, onAddMedia }: EditPageProps) {
     if (audio) {
       audio.pause();
       audio.currentTime = 0;
-    }
-    if (playIntervalRef.current) {
-      clearInterval(playIntervalRef.current);
-      playIntervalRef.current = null;
     }
     setIsPlaying(false);
     setCurrentTime(0);
@@ -147,31 +160,45 @@ function EditPage({ audioClips, videoClips, onAddMedia }: EditPageProps) {
     setCurrentTime(time);
   }, []);
 
+  // Supprimer le clip sélectionné avec la touche Delete/Suppr
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Delete" && selectedClip && selectedClipType && onDeleteClip) {
+        onDeleteClip(selectedClip.id, selectedClipType);
+        setSelectedClip(null);
+        setSelectedClipType(null);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [selectedClip, selectedClipType, onDeleteClip]);
+
   const handleClipSelect = useCallback(async (clipId: string, type: "audio" | "video") => {
-    const clip = type === "audio" 
+    const clip = type === "audio"
       ? audioClips.find(c => c.id === clipId)
       : videoClips.find(c => c.id === clipId);
     setSelectedClip(clip || null);
-    
-    // Si c'est un clip audio, le définir comme source
+    setSelectedClipType(clip ? type : null);
+
     if (clip && type === "audio") {
       try {
+        revokeBlobUrl(currentAudioSrc);
         const url = await loadAudioAsBlob(clip.path);
         setCurrentAudioSrc(url);
       } catch (err) {
         console.error("Erreur chargement clip:", err);
       }
     }
-  }, [audioClips, videoClips]);
+  }, [audioClips, videoClips, currentAudioSrc]);
 
   const handlePlayClip = useCallback(async (clip: AudioClip | VideoClip) => {
     if ("path" in clip) {
       try {
+        revokeBlobUrl(currentAudioSrc);
         const newSrc = await loadAudioAsBlob(clip.path);
         setCurrentAudioSrc(newSrc);
         setCurrentTime(0);
-        
-        // Attendre que l'audio soit chargé avant de lancer la lecture
+
         setTimeout(() => {
           if (audioRef.current) {
             audioRef.current.currentTime = 0;
@@ -184,7 +211,7 @@ function EditPage({ audioClips, videoClips, onAddMedia }: EditPageProps) {
         console.error("Erreur lecture clip:", err);
       }
     }
-  }, []);
+  }, [currentAudioSrc]);
 
   // Animation fluide du curseur de lecture
   useEffect(() => {
@@ -222,29 +249,22 @@ function EditPage({ audioClips, videoClips, onAddMedia }: EditPageProps) {
     const handleError = (e: Event) => {
       const audioEl = e.target as HTMLAudioElement;
       console.error("Erreur audio:", audioEl.error?.message || "Erreur inconnue");
-      console.error("Code erreur:", audioEl.error?.code);
       setIsPlaying(false);
-    };
-
-    const handleCanPlay = () => {
-      console.log("Audio prêt à jouer, durée:", audio.duration);
     };
 
     audio.addEventListener("ended", handleEnded);
     audio.addEventListener("error", handleError);
-    audio.addEventListener("canplay", handleCanPlay);
 
     return () => {
       audio.removeEventListener("ended", handleEnded);
       audio.removeEventListener("error", handleError);
-      audio.removeEventListener("canplay", handleCanPlay);
     };
   }, []);
 
   return (
     <div className="edit-page">
       <audio ref={audioRef} />
-      
+
       {/* Top Section: Media Browser + Preview */}
       <div className="edit-top">
         {/* Media Browser Panel */}
@@ -260,15 +280,15 @@ function EditPage({ audioClips, videoClips, onAddMedia }: EditPageProps) {
               <div className="media-empty">
                 <span className="empty-icon">📁</span>
                 <p>Aucun média</p>
-                <button className="btn-import" onClick={onAddMedia}>
+                <button className="btn btn-primary btn-sm" onClick={onAddMedia}>
                   Importer des fichiers
                 </button>
               </div>
             ) : (
               <>
                 {videoClips.map(clip => (
-                  <div 
-                    key={clip.id} 
+                  <div
+                    key={clip.id}
                     className={`media-item video ${selectedClip?.id === clip.id ? "selected" : ""}`}
                     onClick={() => handleClipSelect(clip.id, "video")}
                     onDoubleClick={() => handlePlayClip(clip)}
@@ -287,8 +307,8 @@ function EditPage({ audioClips, videoClips, onAddMedia }: EditPageProps) {
                   </div>
                 ))}
                 {audioClips.map(clip => (
-                  <div 
-                    key={clip.id} 
+                  <div
+                    key={clip.id}
                     className={`media-item audio ${selectedClip?.id === clip.id ? "selected" : ""}`}
                     onClick={() => handleClipSelect(clip.id, "audio")}
                     onDoubleClick={() => handlePlayClip(clip)}
@@ -319,7 +339,7 @@ function EditPage({ audioClips, videoClips, onAddMedia }: EditPageProps) {
           <div className="monitor-viewport">
             <div className="viewport-content">
               {videoClips.length > 0 ? (
-                <video 
+                <video
                   ref={videoRef}
                   className="preview-video"
                   src={currentVideoSrc || undefined}
@@ -332,7 +352,7 @@ function EditPage({ audioClips, videoClips, onAddMedia }: EditPageProps) {
                 </div>
               )}
             </div>
-            
+
             {/* Timecode Display */}
             <div className="timecode-display">
               <span className="timecode">{formatTimecode(currentTime)}</span>
@@ -340,7 +360,7 @@ function EditPage({ audioClips, videoClips, onAddMedia }: EditPageProps) {
               <span className="timecode total">{formatTimecode(duration)}</span>
             </div>
           </div>
-          
+
           {/* Transport Controls */}
           <div className="transport-controls">
             <div className="transport-left">
@@ -351,15 +371,15 @@ function EditPage({ audioClips, videoClips, onAddMedia }: EditPageProps) {
                 ⏪
               </button>
             </div>
-            
-            <button 
+
+            <button
               className={`transport-btn play-btn ${isPlaying ? "playing" : ""}`}
               onClick={handlePlayPause}
               title={isPlaying ? "Pause" : "Lecture"}
             >
               {isPlaying ? "⏸️" : "▶️"}
             </button>
-            
+
             <div className="transport-right">
               <button className="transport-btn" title="Image suivante">
                 ⏩

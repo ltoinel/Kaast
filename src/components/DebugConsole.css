@@ -1,0 +1,182 @@
+/* Debug Console */
+.debug-console {
+  display: flex;
+  flex-direction: column;
+  height: 200px;
+  min-height: 100px;
+  background: #0d0d0d;
+  border-top: 1px solid var(--border-default);
+}
+
+.console-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 3px var(--spacing-sm);
+  background: #161616;
+  border-bottom: 1px solid var(--border-subtle);
+  min-height: 28px;
+}
+
+.console-filters {
+  display: flex;
+  gap: 2px;
+}
+
+.console-filter {
+  padding: 2px 8px;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm);
+  font-size: 0.65rem;
+  font-weight: 500;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.console-filter:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.console-filter.active {
+  background: var(--bg-active);
+  color: var(--text-primary);
+}
+
+.console-filter.filter-warn.active {
+  color: #e5a50a;
+}
+
+.console-filter.filter-error.active {
+  color: #f44;
+}
+
+.console-actions {
+  display: flex;
+  gap: 4px;
+}
+
+.console-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.console-btn:hover {
+  background: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+/* Console Entries */
+.console-entries {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  font-family: 'JetBrains Mono', 'Fira Code', 'SF Mono', 'Consolas', monospace;
+  font-size: 0.7rem;
+  line-height: 1.5;
+}
+
+.console-empty {
+  padding: var(--spacing-md);
+  color: var(--text-muted);
+  text-align: center;
+  font-size: 0.7rem;
+}
+
+.console-entry {
+  display: flex;
+  gap: var(--spacing-sm);
+  padding: 2px var(--spacing-sm);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+  word-break: break-word;
+}
+
+.console-entry:hover {
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.entry-time {
+  flex-shrink: 0;
+  color: var(--text-muted);
+  opacity: 0.6;
+}
+
+.entry-level {
+  flex-shrink: 0;
+  width: 40px;
+  font-weight: 600;
+  font-size: 0.6rem;
+  display: flex;
+  align-items: center;
+}
+
+.entry-message {
+  flex: 1;
+  white-space: pre-wrap;
+  min-width: 0;
+}
+
+/* Level colors */
+.console-entry.level-log {
+  color: #c8c8c8;
+}
+
+.console-entry.level-log .entry-level {
+  color: #888;
+}
+
+.console-entry.level-info {
+  color: #7cb3f5;
+}
+
+.console-entry.level-info .entry-level {
+  color: #5a9fe6;
+}
+
+.console-entry.level-warn {
+  color: #e5c07b;
+  background: rgba(229, 165, 10, 0.04);
+}
+
+.console-entry.level-warn .entry-level {
+  color: #e5a50a;
+}
+
+.console-entry.level-error {
+  color: #e06c75;
+  background: rgba(255, 68, 68, 0.04);
+}
+
+.console-entry.level-error .entry-level {
+  color: #f44;
+}
+
+/* Scrollbar */
+.console-entries::-webkit-scrollbar {
+  width: 6px;
+}
+
+.console-entries::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.console-entries::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 3px;
+}
+
+.console-entries::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.2);
+}

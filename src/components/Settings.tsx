@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { safeInvoke, getTauriErrorMessage } from "../utils/tauri";
 import "./Settings.css";
 
 interface SettingsProps {
@@ -11,12 +12,26 @@ function Settings({ onClose }: SettingsProps) {
   const [apiKey, setApiKey] = useState("");
   const [isSaved, setIsSaved] = useState(false);
   const [showKey, setShowKey] = useState(false);
+  const [ffmpegStatus, setFfmpegStatus] = useState<string>("");
+  const [ffmpegAvailable, setFfmpegAvailable] = useState<boolean>(false);
 
   useEffect(() => {
     const savedKey = localStorage.getItem(GEMINI_API_KEY_STORAGE);
     if (savedKey) {
       setApiKey(savedKey);
     }
+    // Vérifier FFmpeg
+    const checkFfmpeg = async () => {
+      try {
+        const result = await safeInvoke<string>("check_ffmpeg");
+        setFfmpegStatus(result);
+        setFfmpegAvailable(true);
+      } catch (error) {
+        setFfmpegStatus(getTauriErrorMessage(error));
+        setFfmpegAvailable(false);
+      }
+    };
+    checkFfmpeg();
   }, []);
 
   const handleSave = () => {
@@ -40,7 +55,7 @@ function Settings({ onClose }: SettingsProps) {
       <div className="settings-header">
         <h2>Paramètres</h2>
         {onClose && (
-          <button onClick={onClose} className="btn-back">
+          <button onClick={onClose} className="btn btn-secondary">
             ← Retour
           </button>
         )}
@@ -135,6 +150,31 @@ function Settings({ onClose }: SettingsProps) {
             </div>
           </section>
 
+          {/* FFmpeg Section */}
+          <section className="settings-section">
+            <div className="section-header">
+              <span className="section-icon">🔧</span>
+              <div>
+                <h3>FFmpeg</h3>
+                <p className="section-description">
+                  Requis pour le montage vidéo et l'export
+                </p>
+              </div>
+            </div>
+            <div className="ffmpeg-info">
+              <div className={`ffmpeg-badge ${ffmpegAvailable ? "available" : "missing"}`}>
+                <span className="ffmpeg-dot" />
+                {ffmpegAvailable ? "Installé" : "Non disponible"}
+              </div>
+              <p className="ffmpeg-detail">{ffmpegStatus || "Vérification en cours..."}</p>
+              {!ffmpegAvailable && (
+                <p className="text-muted">
+                  FFmpeg embarqué introuvable. Lancez <code>npm run download-ffmpeg</code> puis relancez l'application.
+                </p>
+              )}
+            </div>
+          </section>
+
           {/* About Section */}
           <section className="settings-section">
             <div className="section-header">
@@ -149,7 +189,7 @@ function Settings({ onClose }: SettingsProps) {
             <div className="about-content">
               <p>Version 1.0.0</p>
               <p className="text-muted">
-                Kaast utilise l'API Gemini pour générer des scripts de podcasts 
+                Kaast utilise l'API Gemini pour générer des scripts de podcasts
                 et des voix naturelles à partir de vos sources.
               </p>
             </div>

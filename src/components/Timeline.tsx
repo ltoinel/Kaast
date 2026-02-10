@@ -1,23 +1,8 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useMemo } from "react";
 import "./Timeline.css";
-import { loadAudioAsBlob } from "../utils/tauri";
-
-export interface AudioClip {
-  id: string;
-  name: string;
-  path: string;
-  duration: number;
-  startTime: number;
-}
-
-export interface VideoClip {
-  id: string;
-  name: string;
-  path: string;
-  duration: number;
-  startTime: number;
-  thumbnail?: string;
-}
+import { loadAudioAsBlob, revokeBlobUrl } from "../utils/tauri";
+import type { AudioClip, VideoClip } from "../types";
+export type { AudioClip, VideoClip };
 
 interface TimelineProps {
   audioClips?: AudioClip[];
@@ -29,10 +14,10 @@ interface TimelineProps {
   onSeek?: (time: number) => void;
 }
 
-function Timeline({ 
-  audioClips = [], 
-  videoClips = [], 
-  onClipSelect, 
+function Timeline({
+  audioClips = [],
+  videoClips = [],
+  onClipSelect,
   onPlayClip,
   currentTime: externalCurrentTime,
   isPlaying: externalIsPlaying,
@@ -57,12 +42,28 @@ function Timeline({
     60 // minimum 60 secondes
   );
 
-  // Générer les marqueurs de temps
-  const timeMarkers: number[] = [];
-  const interval = zoom >= 100 ? 5 : zoom >= 50 ? 10 : 30;
-  for (let t = 0; t <= totalDuration; t += interval) {
-    timeMarkers.push(t);
-  }
+  // Générer les marqueurs de temps (memoized)
+  const timeMarkers = useMemo(() => {
+    const markers: number[] = [];
+    const interval = zoom >= 100 ? 5 : zoom >= 50 ? 10 : 30;
+    for (let t = 0; t <= totalDuration; t += interval) {
+      markers.push(t);
+    }
+    return markers;
+  }, [zoom, totalDuration]);
+
+  // Générer des hauteurs de waveform stables (seeded par clip ID)
+  const waveformHeights = useMemo(() => {
+    const heights: Record<string, number[]> = {};
+    audioClips.forEach(clip => {
+      const barCount = Math.max(5, Math.floor(clip.duration));
+      const seed = clip.id.split('').reduce((acc, ch) => acc + ch.charCodeAt(0), 0);
+      heights[clip.id] = Array.from({ length: barCount }, (_, i) => {
+        return 30 + ((seed * (i + 1) * 9301 + 49297) % 233280) / 233280 * 40;
+      });
+    });
+    return heights;
+  }, [audioClips]);
 
   const formatTime = (seconds: number): string => {
     const mins = Math.floor(seconds / 60);
@@ -81,12 +82,18 @@ function Timeline({
     if (onPlayClip) {
       onPlayClip(clip);
     } else if ("path" in clip) {
-      // Lire l'audio directement
       if (audioRef.current) {
-        const url = await convertToAssetUrl(clip.path);
-        audioRef.current.src = url;
-        audioRef.current.play();
-        setInternalIsPlaying(true);
+        try {
+          if (audioRef.current.src.startsWith('blob:')) {
+            revokeBlobUrl(audioRef.current.src);
+          }
+          const url = await loadAudioAsBlob(clip.path);
+          audioRef.current.src = url;
+          audioRef.current.play();
+          setInternalIsPlaying(true);
+        } catch (err) {
+          console.error("Erreur lecture audio:", err);
+        }
       }
     }
   };
@@ -106,9 +113,10 @@ function Timeline({
     setScrollX(e.currentTarget.scrollLeft);
   };
 
+  // Animation frame pour la lecture interne uniquement
   useEffect(() => {
     let animationFrame: number;
-    
+
     if (internalIsPlaying && audioRef.current) {
       const updateTime = () => {
         if (audioRef.current) {
@@ -128,12 +136,12 @@ function Timeline({
         cancelAnimationFrame(animationFrame);
       }
     };
-  }, [isPlaying]);
+  }, [internalIsPlaying]);
 
   return (
     <div className="timeline">
       <audio ref={audioRef} onEnded={() => setInternalIsPlaying(false)} />
-      
+
       <div className="timeline-header">
         <h3>🎬 Timeline</h3>
         <div className="timeline-controls">
@@ -157,7 +165,7 @@ function Timeline({
 
       <div className="timeline-body" onScroll={handleScroll} ref={timelineRef}>
         {/* Règle du temps */}
-        <div 
+        <div
           className="timeline-ruler"
           style={{ width: totalDuration * zoom }}
           onClick={handleRulerClick}
@@ -181,7 +189,7 @@ function Timeline({
         {/* Piste vidéo */}
         <div className="timeline-track video-track">
           <div className="track-label">🎥 Vidéo</div>
-          <div 
+          <div
             className="track-content"
             style={{ width: totalDuration * zoom }}
           >
@@ -212,7 +220,7 @@ function Timeline({
         {/* Piste audio */}
         <div className="timeline-track audio-track">
           <div className="track-label">🎙️ Audio</div>
-          <div 
+          <div
             className="track-content"
             style={{ width: totalDuration * zoom }}
           >
@@ -234,11 +242,11 @@ function Timeline({
                   title={`Double-cliquez pour écouter: ${clip.name}`}
                 >
                   <div className="clip-waveform">
-                    {[...Array(Math.max(5, Math.floor(clip.duration)))].map((_, i) => (
+                    {(waveformHeights[clip.id] || []).map((height, i) => (
                       <div
                         key={i}
                         className="waveform-bar"
-                        style={{ height: `${30 + Math.random() * 40}%` }}
+                        style={{ height: `${height}%` }}
                       />
                     ))}
                   </div>

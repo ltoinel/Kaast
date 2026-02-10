@@ -1,19 +1,6 @@
 // Gestion des projets podcast
-export interface Project {
-  id: string;
-  name: string;
-  path: string;
-  createdAt: string;
-  updatedAt: string;
-}
-
-export interface AudioClip {
-  id: string;
-  name: string;
-  path: string;
-  duration: number;
-  startTime: number;
-}
+import { Project } from "../types";
+export type { Project };
 
 const PROJECTS_STORAGE_KEY = 'kaast_projects';
 const CURRENT_PROJECT_KEY = 'kaast_current_project';
