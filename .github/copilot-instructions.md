@@ -3,18 +3,24 @@
 # Kaast - Tauri + React
 
 ## Project Type
-- **Framework**: Tauri (Rust backend + React frontend)
-- **Platform**: Cross-platform (Windows, macOS)
-- **Scope**: Modern video editor inspired by DaVinci Resolve, with cut, merge, and advanced transitions
+- **Framework**: Tauri 2.0 (Rust backend + React frontend)
+- **Platform**: Cross-platform (Windows, Linux, macOS)
+- **Scope**: Podcast editor with AI, inspired by DaVinci Resolve
 
 ## Architecture
-- Frontend: React + TypeScript
-- Backend: Rust (Tauri)
-- Video Processing: FFmpeg
-- UI Components: Timeline, video preview, controls
+- Frontend: React 18 + TypeScript + Vite
+- Backend: Rust (Tauri 2.0)
+- Video Processing: FFmpeg (embedded via sidecar)
+- AI: Google Gemini API
+- i18n: react-i18next with system language auto-detection
+- UI: DaVinci Resolve-inspired dark theme with CSS variables
 
 ## Development Guidelines
 - Use TypeScript for type safety
-- Follow Tauri best practices for IPC
-- Implement video processing in Rust backend
+- Follow Tauri 2.0 best practices for IPC (invoke/commands)
+- Implement video processing in Rust backend via FFmpeg sidecar
 - Keep UI responsive during video operations
+- Use global `.btn` CSS system for buttons (btn-primary, btn-secondary, btn-success)
+- Use CSS variables defined in styles.css for theming
+- All user-facing strings must use react-i18next translation keys (`useTranslation` hook)
+- Translation files in `src/i18n/locales/` with flat keys prefixed by component name

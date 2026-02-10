@@ -1,74 +1,77 @@
 /**
- * Utilitaires pour gérer les appels Tauri en toute sécurité
+ * Utilities for safe Tauri API calls
  */
+import i18n from '../i18n';
 
-// Vérifier si nous sommes dans un environnement Tauri v2
+// Check if we are running inside a Tauri v2 webview
 export function isTauriAvailable(): boolean {
   return typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
 }
 
-// Wrapper sécurisé pour invoke
+class TauriNotAvailableError extends Error {
+  constructor() {
+    super(i18n.t('tauri.errorNotAvailable', "The application must be launched with Tauri. Use 'npm run tauri dev' instead of 'npm run dev'"));
+    this.name = 'TauriNotAvailableError';
+  }
+}
+
+// Safe wrapper for invoke
 export async function safeInvoke<T>(
   command: string,
   args?: Record<string, unknown>
 ): Promise<T> {
   if (!isTauriAvailable()) {
-    throw new Error(
-      "L'application doit être lancée avec Tauri. Utilisez 'npm run tauri dev' au lieu de 'npm run dev'"
-    );
+    throw new TauriNotAvailableError();
   }
 
   try {
     const { invoke } = await import('@tauri-apps/api/core');
     return await invoke<T>(command, args);
   } catch (error) {
-    console.error(`Erreur lors de l'appel à ${command}:`, error);
+    console.error(`Error calling ${command}:`, error);
     throw error;
   }
 }
 
-// Obtenir un message d'erreur convivial
+// Get a user-friendly error message
 export function getTauriErrorMessage(error: unknown): string {
+  if (error instanceof TauriNotAvailableError) {
+    return "⚠️ " + i18n.t('tauri.errorMessage', "The application must be launched with 'npm run tauri dev'");
+  }
   if (error instanceof Error) {
-    if (error.message.includes("doit être lancée avec Tauri")) {
-      return "⚠️ L'application doit être lancée avec 'npm run tauri dev'";
-    }
     return error.message;
   }
   return String(error);
 }
 
-// Convertir un chemin de fichier en URL utilisable par le webview
+// Convert a file path to a URL usable by the webview
 export async function convertToAssetUrl(filePath: string): Promise<string> {
   if (!isTauriAvailable()) {
-    // En mode navigateur, tenter file:// (ne fonctionnera probablement pas)
     return `file://${filePath}`;
   }
 
   try {
-    // Essayer d'abord convertFileSrc
     const { convertFileSrc } = await import('@tauri-apps/api/core');
     return convertFileSrc(filePath);
   } catch (error) {
-    console.error("Erreur convertFileSrc:", error);
+    console.error("convertFileSrc error:", error);
     return `file://${filePath}`;
   }
 }
 
-// Révoquer une Blob URL pour libérer la mémoire
+// Revoke a Blob URL to free memory
 export function revokeBlobUrl(url: string | null): void {
   if (url && url.startsWith('blob:')) {
     URL.revokeObjectURL(url);
   }
 }
 
-// Charger un fichier audio via la commande Rust (contourne le scope FS)
+// Load an audio file via Rust command (bypasses FS scope)
 export async function loadAudioAsBlob(filePath: string): Promise<string> {
   if (!isTauriAvailable()) {
-    throw new Error("Tauri non disponible");
+    throw new Error("Tauri not available");
   }
 
-  // Méthode principale : commande Rust qui retourne un data URI
   const dataUri = await safeInvoke<string>('read_audio_file', { filePath });
   return dataUri;
 }

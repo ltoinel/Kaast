@@ -1,14 +1,14 @@
 import { useState, useEffect } from "react";
-import { 
-  loadProjects, 
-  createProject, 
-  setCurrentProject, 
+import { useTranslation } from "react-i18next";
+import {
+  loadProjects,
+  createProject,
+  setCurrentProject,
   getCurrentProject,
-  Project 
+  Project
 } from "../utils/project";
 import "./ProjectStartup.css";
 
-// Types pour le plugin dialog
 declare global {
   interface Window {
     __TAURI_INTERNALS__?: unknown;
@@ -20,6 +20,7 @@ interface ProjectStartupProps {
 }
 
 function ProjectStartup({ onProjectReady }: ProjectStartupProps) {
+  const { t } = useTranslation();
   const [projects, setProjects] = useState<Project[]>([]);
   const [projectName, setProjectName] = useState<string>("");
   const [isCreating, setIsCreating] = useState<boolean>(false);
@@ -27,11 +28,9 @@ function ProjectStartup({ onProjectReady }: ProjectStartupProps) {
   const [error, setError] = useState<string>("");
 
   useEffect(() => {
-    // Charger les projets existants
     const savedProjects = loadProjects();
     setProjects(savedProjects);
 
-    // Vérifier s'il y a un projet courant
     const current = getCurrentProject();
     if (current) {
       onProjectReady(current);
@@ -40,7 +39,7 @@ function ProjectStartup({ onProjectReady }: ProjectStartupProps) {
 
   const handleCreateProject = async () => {
     if (!projectName.trim()) {
-      setError("Veuillez entrer un nom de projet");
+      setError(t('startup.errorNoName'));
       return;
     }
 
@@ -49,24 +48,21 @@ function ProjectStartup({ onProjectReady }: ProjectStartupProps) {
 
     try {
       const { open } = await import("@tauri-apps/plugin-dialog");
-      
-      // Sélectionner le dossier de destination
+
       const selectedPath = await open({
         directory: true,
         multiple: false,
-        title: "Choisir le dossier du projet",
+        title: t('startup.chooseFolder'),
       });
 
       if (typeof selectedPath === "string") {
         const projectPath = `${selectedPath}/${projectName.replace(/[^a-zA-Z0-9-_]/g, "_")}`;
-        
-        // Créer les dossiers du projet
+
         const { mkdir } = await import("@tauri-apps/plugin-fs");
         await mkdir(projectPath, { recursive: true });
         await mkdir(`${projectPath}/audio`, { recursive: true });
         await mkdir(`${projectPath}/video`, { recursive: true });
 
-        // Créer le projet
         const project = createProject(projectName, projectPath);
         setCurrentProject(project);
         onProjectReady(project);
@@ -86,17 +82,16 @@ function ProjectStartup({ onProjectReady }: ProjectStartupProps) {
   const handleBrowseProject = async () => {
     try {
       const { open } = await import("@tauri-apps/plugin-dialog");
-      
+
       const selectedPath = await open({
         directory: true,
         multiple: false,
-        title: "Ouvrir un projet existant",
+        title: t('startup.openExistingProject'),
       });
 
       if (typeof selectedPath === "string") {
-        // Vérifier si c'est un projet Kaast (contient script.md ou audio/)
-        const projectName = selectedPath.split("/").pop() || "Projet";
-        const project = createProject(projectName, selectedPath);
+        const name = selectedPath.split("/").pop() || t('app.project');
+        const project = createProject(name, selectedPath);
         setCurrentProject(project);
         onProjectReady(project);
       }
@@ -109,34 +104,34 @@ function ProjectStartup({ onProjectReady }: ProjectStartupProps) {
     return (
       <div className="project-startup">
         <div className="startup-dialog">
-          <h1>🎙️ Nouveau Projet</h1>
-          
+          <h1>🎙️ {t('startup.newProject')}</h1>
+
           <div className="create-form">
-            <label htmlFor="project-name">Nom du projet</label>
+            <label htmlFor="project-name">{t('startup.projectNameLabel')}</label>
             <input
               id="project-name"
               type="text"
               value={projectName}
               onChange={(e) => setProjectName(e.target.value)}
-              placeholder="Mon Podcast"
+              placeholder={t('startup.projectNamePlaceholder')}
               autoFocus
             />
-            
+
             {error && <div className="error-message">{error}</div>}
-            
+
             <div className="form-actions">
               <button
                 onClick={() => setView("main")}
                 className="btn-secondary"
               >
-                Retour
+                {t('startup.back')}
               </button>
               <button
                 onClick={handleCreateProject}
                 disabled={isCreating || !projectName.trim()}
                 className="btn-primary"
               >
-                {isCreating ? "Création..." : "Créer le projet"}
+                {isCreating ? t('startup.creating') : t('startup.createProject')}
               </button>
             </div>
           </div>
@@ -149,8 +144,8 @@ function ProjectStartup({ onProjectReady }: ProjectStartupProps) {
     <div className="project-startup">
       <div className="startup-dialog">
         <div className="startup-header">
-          <h1>🎙️ Kaast</h1>
-          <p>Studio Podcast Intelligent</p>
+          <h1>🎙️ {t('startup.title')}</h1>
+          <p>{t('startup.subtitle')}</p>
         </div>
 
         <div className="startup-actions">
@@ -159,8 +154,8 @@ function ProjectStartup({ onProjectReady }: ProjectStartupProps) {
             className="action-card create"
           >
             <span className="action-icon">➕</span>
-            <span className="action-title">Nouveau Projet</span>
-            <span className="action-desc">Créer un nouveau podcast</span>
+            <span className="action-title">{t('startup.newProject')}</span>
+            <span className="action-desc">{t('startup.newProjectDesc')}</span>
           </button>
 
           <button
@@ -168,14 +163,14 @@ function ProjectStartup({ onProjectReady }: ProjectStartupProps) {
             className="action-card open"
           >
             <span className="action-icon">📂</span>
-            <span className="action-title">Ouvrir</span>
-            <span className="action-desc">Ouvrir un projet existant</span>
+            <span className="action-title">{t('startup.open')}</span>
+            <span className="action-desc">{t('startup.openDesc')}</span>
           </button>
         </div>
 
         {projects.length > 0 && (
           <div className="recent-projects">
-            <h3>Projets récents</h3>
+            <h3>{t('startup.recentProjects')}</h3>
             <ul>
               {projects.slice(0, 5).map((project) => (
                 <li key={project.id}>

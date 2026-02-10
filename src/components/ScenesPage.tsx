@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from "react";
+import { useTranslation } from "react-i18next";
 import "./ScenesPage.css";
 import { safeInvoke, getTauriErrorMessage, isTauriAvailable, loadAudioAsBlob, convertToAssetUrl, revokeBlobUrl } from "../utils/tauri";
 import type { AudioClip, VideoScene } from "../types";
@@ -10,6 +11,7 @@ interface ScenesPageProps {
 }
 
 function ScenesPage({ audioClips, projectPath, onOpenSettings }: ScenesPageProps) {
+  const { t } = useTranslation();
   const [scenes, setScenes] = useState<VideoScene[]>([]);
   const [script, setScript] = useState<string>("");
   const [isGenerating, setIsGenerating] = useState<boolean>(false);
@@ -20,7 +22,7 @@ function ScenesPage({ audioClips, projectPath, onOpenSettings }: ScenesPageProps
   const [audioSrc, setAudioSrc] = useState<string | null>(null);
   const audioRef = useRef<HTMLAudioElement>(null);
 
-  // Charger le script depuis le projet
+  // Load script from project
   useEffect(() => {
     const loadScript = async () => {
       if (!projectPath) return;
@@ -29,13 +31,13 @@ function ScenesPage({ audioClips, projectPath, onOpenSettings }: ScenesPageProps
         const content = await readTextFile(`${projectPath}/script.md`);
         setScript(content);
       } catch {
-        // Pas de script encore
+        // No script yet
       }
     };
     loadScript();
   }, [projectPath]);
 
-  // Charger les scènes sauvegardées
+  // Load saved scenes
   useEffect(() => {
     const loadScenes = async () => {
       if (!projectPath) return;
@@ -47,22 +49,20 @@ function ScenesPage({ audioClips, projectPath, onOpenSettings }: ScenesPageProps
           setScenes(data);
         }
       } catch {
-        // Pas de scènes sauvegardées
+        // No saved scenes
       }
     };
     loadScenes();
   }, [projectPath]);
 
-  // Charger l'audio du premier clip via Blob URL (comme EditPage)
+  // Load audio from first clip via Blob URL
   useEffect(() => {
     const loadAudio = async () => {
       if (audioClips.length === 0 || !isTauriAvailable()) return;
-      // Libérer l'ancienne URL blob
       revokeBlobUrl(audioSrc);
 
       const clip = audioClips[0];
       try {
-        // Méthode principale : lire les octets et créer un blob URL
         const url = await loadAudioAsBlob(clip.path);
         setAudioSrc(url);
         if (audioRef.current) {
@@ -70,8 +70,7 @@ function ScenesPage({ audioClips, projectPath, onOpenSettings }: ScenesPageProps
           audioRef.current.load();
         }
       } catch (err) {
-        console.error("Erreur loadAudioAsBlob:", err);
-        // Fallback : asset protocol
+        console.error("loadAudioAsBlob error:", err);
         try {
           const url = await convertToAssetUrl(clip.path);
           setAudioSrc(url);
@@ -80,7 +79,7 @@ function ScenesPage({ audioClips, projectPath, onOpenSettings }: ScenesPageProps
             audioRef.current.load();
           }
         } catch (err2) {
-          console.error("Fallback convertToAssetUrl échoué:", err2);
+          console.error("convertToAssetUrl fallback failed:", err2);
         }
       }
     };
@@ -91,7 +90,7 @@ function ScenesPage({ audioClips, projectPath, onOpenSettings }: ScenesPageProps
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [audioClips]);
 
-  // Animation du curseur de lecture
+  // Playback cursor animation
   useEffect(() => {
     let animationFrameId: number;
     const updateTime = () => {
@@ -124,17 +123,16 @@ function ScenesPage({ audioClips, projectPath, onOpenSettings }: ScenesPageProps
       return;
     }
 
-    // Si l'audio n'est pas encore prêt, attendre le chargement
     if (audio.readyState < 2) {
       try {
         await new Promise<void>((resolve, reject) => {
-          const timeout = setTimeout(() => reject(new Error("Timeout chargement audio")), 10000);
+          const timeout = setTimeout(() => reject(new Error("Audio load timeout")), 10000);
           audio.addEventListener("canplay", () => { clearTimeout(timeout); resolve(); }, { once: true });
-          audio.addEventListener("error", () => { clearTimeout(timeout); reject(new Error("Erreur chargement audio")); }, { once: true });
+          audio.addEventListener("error", () => { clearTimeout(timeout); reject(new Error("Audio load error")); }, { once: true });
         });
       } catch (err) {
-        console.error("Erreur chargement audio:", err);
-        setError("Impossible de charger le fichier audio");
+        console.error("Audio load error:", err);
+        setError(t('scenes.errorLoadAudio'));
         return;
       }
     }
@@ -143,10 +141,10 @@ function ScenesPage({ audioClips, projectPath, onOpenSettings }: ScenesPageProps
       await audio.play();
       setIsPlaying(true);
     } catch (err) {
-      console.error("Erreur lecture:", err);
-      setError("Erreur lors de la lecture audio");
+      console.error("Playback error:", err);
+      setError(t('scenes.errorPlayAudio'));
     }
-  }, [isPlaying, audioSrc]);
+  }, [isPlaying, audioSrc, t]);
 
   const handleSeek = (e: React.ChangeEvent<HTMLInputElement>) => {
     const time = parseFloat(e.target.value);
@@ -159,13 +157,13 @@ function ScenesPage({ audioClips, projectPath, onOpenSettings }: ScenesPageProps
   const handleGenerateScenes = async () => {
     const apiKey = localStorage.getItem("gemini_api_key");
     if (!apiKey) {
-      setError("Clé API Gemini non configurée. Allez dans les paramètres.");
+      setError(t('scenes.errorNoApiKey'));
       if (onOpenSettings) onOpenSettings();
       return;
     }
 
     if (!script.trim()) {
-      setError("Aucun script disponible. Écrivez ou générez un script d'abord.");
+      setError(t('scenes.errorNoScript'));
       return;
     }
 
@@ -193,7 +191,6 @@ function ScenesPage({ audioClips, projectPath, onOpenSettings }: ScenesPageProps
 
       setScenes(newScenes);
 
-      // Sauvegarder les scènes
       if (projectPath) {
         try {
           const { writeTextFile } = await import("@tauri-apps/plugin-fs");
@@ -202,7 +199,7 @@ function ScenesPage({ audioClips, projectPath, onOpenSettings }: ScenesPageProps
             JSON.stringify(newScenes, null, 2)
           );
         } catch (e) {
-          console.error("Erreur sauvegarde scènes:", e);
+          console.error("Scene save error:", e);
         }
       }
     } catch (err) {
@@ -230,10 +227,10 @@ function ScenesPage({ audioClips, projectPath, onOpenSettings }: ScenesPageProps
       {/* Header */}
       <div className="scenes-header">
         <div className="scenes-header-left">
-          <h2>Scènes vidéo</h2>
+          <h2>{t('scenes.title')}</h2>
           {scenes.length > 0 && (
             <span className="scenes-count">
-              {scenes.length} scènes · {formatTime(totalScenesDuration)}
+              {t('scenes.count', { count: scenes.length })} · {formatTime(totalScenesDuration)}
             </span>
           )}
         </div>
@@ -245,10 +242,10 @@ function ScenesPage({ audioClips, projectPath, onOpenSettings }: ScenesPageProps
           {isGenerating ? (
             <>
               <span className="spinner"></span>
-              Analyse en cours...
+              {t('scenes.analyzing')}
             </>
           ) : (
-            "Générer les scènes"
+            t('scenes.generateScenes')
           )}
         </button>
       </div>
@@ -292,16 +289,14 @@ function ScenesPage({ audioClips, projectPath, onOpenSettings }: ScenesPageProps
             {!script.trim() ? (
               <>
                 <span className="empty-icon">📝</span>
-                <p>Aucun script disponible</p>
-                <p className="empty-hint">Écrivez ou générez un script dans l'onglet Script</p>
+                <p>{t('scenes.noScript')}</p>
+                <p className="empty-hint">{t('scenes.noScriptHint')}</p>
               </>
             ) : (
               <>
                 <span className="empty-icon">🎬</span>
-                <p>Aucune scène identifiée</p>
-                <p className="empty-hint">
-                  Cliquez sur « Générer les scènes » pour identifier des scènes vidéo depuis votre script
-                </p>
+                <p>{t('scenes.noScenes')}</p>
+                <p className="empty-hint">{t('scenes.noScenesHint')}</p>
               </>
             )}
           </div>
@@ -310,7 +305,7 @@ function ScenesPage({ audioClips, projectPath, onOpenSettings }: ScenesPageProps
             {scenes.map((scene, index) => (
               <div key={scene.id} className="scene-card">
                 <div className="scene-card-header">
-                  <span className="scene-number">Scène {index + 1}</span>
+                  <span className="scene-number">{t('scenes.sceneNumber', { number: index + 1 })}</span>
                   <span className="scene-duration">{scene.duration}s</span>
                 </div>
                 <p className="scene-description">{scene.description}</p>

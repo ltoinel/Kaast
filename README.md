@@ -1,128 +1,76 @@
 # Kaast
 
-Kaast : un éditeur vidéo moderne et performant inspiré de DaVinci Resolve, construit avec Tauri et React.
+Kaast is a modern, high-performance podcast editor inspired by DaVinci Resolve, built with Tauri and React.
 
-## Fonctionnalités
+## Features
 
-- ✂️ **Découper des vidéos** avec FFmpeg
-- 🔗 **Fusionner plusieurs vidéos** en une seule
-- ✨ **Ajouter des transitions** (fade, dissolve, wipe)
-- 📤 **Exporter en MP4** avec différentes qualités
-- 🎬 **Aperçu en temps réel**
-- ⚡ **Interface réactive** et intuitive
-- 🔍 **Vérification FFmpeg** au démarrage
+- ✂️ **Cut videos** with FFmpeg
+- 🔗 **Merge multiple videos** into one
+- ✨ **Add transitions** (fade, dissolve, wipe)
+- 📤 **Export to MP4** with different quality levels
+- 🎬 **Real-time preview**
+- ⚡ **Responsive and intuitive** interface
+- 🎙️ **AI script generation** (Gemini)
+- 📦 **Embedded FFmpeg** (no manual installation needed)
+- 🌐 **Multilingual** (EN, FR, DE, ES, IT, PT, NL, PL)
 
 ## Technologies
 
 - **Frontend**: React + TypeScript + Vite
 - **Backend**: Rust + Tauri 2.0
-- **Traitement vidéo**: FFmpeg (via commandes système)
-- **Formats supportés**: MP4, AVI, MOV, MKV, WebM
+- **Video Processing**: FFmpeg (embedded via sidecar)
+- **AI**: Google Gemini API
+- **i18n**: react-i18next (system language auto-detection)
+- **Supported Formats**: MP4, AVI, MOV, MKV, WebM
 
-## Prérequis
+## Supported Platforms
 
-- [Node.js](https://nodejs.org/) (v18 ou supérieur) ✅
-- [Rust](https://www.rust-lang.org/tools/install) ⚠️ **Installez si pas encore fait**
-- **FFmpeg** ⚠️ **Requis pour l'export vidéo**
-- NPM ou Yarn ✅
+- ✅ Windows 10/11 (x86_64)
+- ✅ macOS (ARM aarch64 + Intel x86_64)
+- ✅ Linux (x86_64) — AppImage / DEB / RPM
 
-### Installation de FFmpeg
+## Prerequisites (development)
 
-**FFmpeg est REQUIS** pour toutes les fonctionnalités de traitement vidéo.
+- [Node.js](https://nodejs.org/) (v18 or later)
+- [Rust](https://www.rust-lang.org/tools/install)
 
-**Windows (avec Chocolatey)** :
-```powershell
-choco install ffmpeg
-```
+### Installing Rust
 
-**macOS** :
-```bash
-brew install ffmpeg
-```
+**Windows**:
+1. Download and run [rustup-init.exe](https://win.rustup.rs/)
+2. Follow the installer instructions
+3. Restart your terminal
 
-**Linux (Ubuntu/Debian)** :
-```bash
-sudo apt install ffmpeg
-```
-
-📖 Guide complet : [FFMPEG_INSTALL.md](FFMPEG_INSTALL.md)
-
-### Installation de Rust (si pas encore installé)
-
-1. Téléchargez et exécutez [rustup-init.exe](https://win.rustup.rs/)
-2. Suivez les instructions de l'installateur
-3. Redémarrez votre terminal
-4. Vérifiez l'installation : `rustc --version`
-
-### Installation de Rust (macOS/Linux)
-
+**macOS / Linux**:
 ```bash
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 ```
 
 ## Installation
 
-1. Les dépendances npm sont déjà installées ✅
-2. Si besoin de réinstaller :
 ```bash
 npm install
+npm run download-ffmpeg
 ```
 
-## Développement
-
-**⚠️ IMPORTANT** : Pour lancer l'application avec toutes les fonctionnalités :
+## Development
 
 ```bash
-# ✅ COMMANDE CORRECTE
 npm run tauri dev
-
-# ❌ NE PAS UTILISER
-npm run dev    # Erreur : Tauri non disponible
 ```
 
-**Pourquoi ?** `npm run dev` lance uniquement le frontend web sans le backend Rust. Vous obtiendrez l'erreur `Cannot read properties of undefined (reading 'invoke')`.
+> **Note**: Do not use `npm run dev` alone — it only starts the frontend without the Rust backend.
 
-📖 **Guide complet** : [DEMARRAGE.md](DEMARRAGE.md)
-
-Note : La première compilation peut prendre plusieurs minutes car Rust compile toutes les dépendances.
+The first build may take several minutes as Rust compiles all dependencies.
 
 ## Build
-
-Compilez l'application pour production :
 
 ```bash
 npm run tauri build
 ```
 
-L'exécutable sera généré dans `src-tauri/target/release/`.
+The executable will be generated in `src-tauri/target/release/`.
 
-## État du projet
-
-✅ Structure du projet créée  
-✅ Frontend React configuré  
-✅ Backend Rust/Tauri concomplète  
-✅ Composants: Timeline, Aperçu vidéo, Contrôles  
-✅ **Intégration FFmpeg fonctionnelle**
-✅ **Export MP4 implémenté**
-✅ Vérification FFmpeg au démarrage
-⏳ Fonctions de découpage et fusion (code prêt, UI à connecter)
-⏳ Timeline interactive (à développer)saire  
-⏳ Intégration FFmpeg à venir  
-
-## Plateformes supportées
-
-- ✅ Windows 10/11
-- ✅ macOS (à tester)
-- 🔜 Linux (potentiel)
-
-## Roadmap
-
-- [ ] Intégration FFmpeg pour le traitement vidéo
-- [ ] Gestion de la timeline avancée
-- [ ] Effets et filtres
-- [ ] Export dans différents formats
-- [ ] Prévisualisation multi-caméra
-
-## Licence
+## License
 
 MIT

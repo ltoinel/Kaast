@@ -2,48 +2,47 @@
 
 ## Target Platforms
 
-Kaast is a **desktop application** targeting:
 - **Windows** (x86_64) — NSIS / MSI installer
 - **Linux** (x86_64) — AppImage / DEB / RPM
 - **macOS** (ARM aarch64 + Intel x86_64) — DMG
 
-All code, dependencies, and build scripts MUST support these three platforms.
-
 ## Tech Stack
 
-- **Frontend**: React 18 + TypeScript + Vite
-- **Backend**: Rust (Tauri 2.0)
-- **AI**: Gemini API (script generation, voice synthesis, scene analysis)
-- **Video**: FFmpeg / FFprobe (bundled as Tauri sidecar)
-- **UI Theme**: DaVinci Resolve-inspired dark theme (orange accent)
+- Frontend: React 18 + TypeScript + Vite
+- Backend: Rust (Tauri 2.0)
+- AI: Gemini API (script generation, voice synthesis, scene analysis)
+- Video: FFmpeg / FFprobe (bundled as Tauri sidecar)
+- i18n: react-i18next with i18next-browser-languagedetector
+- UI Theme: DaVinci Resolve-inspired dark theme with orange accent
 
 ## Architecture
 
-- `src/` — React frontend (components, styles, utils)
+- `src/` — React frontend (components, styles, utils, i18n)
+- `src/i18n/` — i18next config and locale files (en, fr, de, es, it, pt, nl, pl)
 - `src-tauri/src/main.rs` — Rust backend (Tauri commands)
-- `src-tauri/binaries/` — FFmpeg/FFprobe sidecar binaries (gitignored, downloaded via `scripts/download-ffmpeg.sh`)
+- `src-tauri/binaries/` — FFmpeg/FFprobe sidecar binaries (gitignored, downloaded via scripts)
 - `scripts/` — Build and setup scripts
 
 ## FFmpeg Sidecar
 
-FFmpeg is bundled as a Tauri sidecar binary (`bundle.externalBin` in `tauri.conf.json`).
-- Binaries are NOT committed to Git (too large, ~80-95 MB per platform)
-- Run `npm run download-ffmpeg` to download for the current platform
-- Run `bash scripts/download-ffmpeg.sh <target>` for a specific target triple
-- The Rust function `sidecar_path()` resolves the bundled binary at runtime, with fallback to system PATH
+- Binaries NOT committed to Git (~80-95 MB per platform)
+- Download via `npm run download-ffmpeg` or `bash scripts/download-ffmpeg.sh <target>`
+- Runtime resolution via `sidecar_path()` function with system PATH fallback
 
 ## Build Commands
 
 ```bash
-npm run download-ffmpeg    # Download FFmpeg for current platform
+npm run download-ffmpeg    # Download FFmpeg binaries for current platform
 npm run tauri dev          # Development mode
-npm run tauri build        # Production build for current platform
+npm run tauri build        # Production build
 ```
 
 ## Conventions
 
-- Language: French for UI labels and user-facing strings
-- Comments in code: French
-- CSS: Use CSS custom properties from `src/styles.css` (DaVinci Resolve theme)
-- Buttons: Use the global `.btn` system (`.btn-primary`, `.btn-secondary`, `.btn-success`, `.btn-sm`)
+- Language: English (default), multilingual via react-i18next
+- UI strings: Use translation keys via `useTranslation()` hook, never hardcode strings
+- Translation files: `src/i18n/locales/{lang}.json` with flat keys prefixed by component name
+- Comments in code: English
+- CSS: Custom properties from `src/styles.css` (DaVinci Resolve theme)
+- Buttons: Global `.btn` system (`.btn-primary`, `.btn-secondary`, `.btn-success`, `.btn-sm`)
 - Tauri commands: snake_case in Rust, camelCase in TypeScript via `safeInvoke()`

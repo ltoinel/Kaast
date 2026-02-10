@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useMemo } from "react";
+import { useTranslation } from "react-i18next";
 import "./Timeline.css";
 import { loadAudioAsBlob, revokeBlobUrl } from "../utils/tauri";
 import type { AudioClip, VideoClip } from "../types";
@@ -23,36 +24,33 @@ function Timeline({
   isPlaying: externalIsPlaying,
   onSeek
 }: TimelineProps) {
+  const { t } = useTranslation();
   const [selectedClip, setSelectedClip] = useState<string | null>(null);
-  const [zoom, setZoom] = useState<number>(50); // pixels per second
+  const [zoom, setZoom] = useState<number>(50);
   const [scrollX, setScrollX] = useState<number>(0);
   const [internalIsPlaying, setInternalIsPlaying] = useState<boolean>(false);
   const [internalCurrentTime, setInternalCurrentTime] = useState<number>(0);
   const timelineRef = useRef<HTMLDivElement>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
-  // Utiliser les props externes ou l'état interne
   const isPlaying = externalIsPlaying !== undefined ? externalIsPlaying : internalIsPlaying;
   const currentTime = externalCurrentTime !== undefined ? externalCurrentTime : internalCurrentTime;
 
-  // Calculer la durée totale
   const totalDuration = Math.max(
     ...audioClips.map(c => c.startTime + c.duration),
     ...videoClips.map(c => c.startTime + c.duration),
-    60 // minimum 60 secondes
+    60
   );
 
-  // Générer les marqueurs de temps (memoized)
   const timeMarkers = useMemo(() => {
     const markers: number[] = [];
     const interval = zoom >= 100 ? 5 : zoom >= 50 ? 10 : 30;
-    for (let t = 0; t <= totalDuration; t += interval) {
-      markers.push(t);
+    for (let i = 0; i <= totalDuration; i += interval) {
+      markers.push(i);
     }
     return markers;
   }, [zoom, totalDuration]);
 
-  // Générer des hauteurs de waveform stables (seeded par clip ID)
   const waveformHeights = useMemo(() => {
     const heights: Record<string, number[]> = {};
     audioClips.forEach(clip => {
@@ -92,7 +90,7 @@ function Timeline({
           audioRef.current.play();
           setInternalIsPlaying(true);
         } catch (err) {
-          console.error("Erreur lecture audio:", err);
+          console.error("Audio playback error:", err);
         }
       }
     }
@@ -113,7 +111,6 @@ function Timeline({
     setScrollX(e.currentTarget.scrollLeft);
   };
 
-  // Animation frame pour la lecture interne uniquement
   useEffect(() => {
     let animationFrame: number;
 
@@ -143,12 +140,12 @@ function Timeline({
       <audio ref={audioRef} onEnded={() => setInternalIsPlaying(false)} />
 
       <div className="timeline-header">
-        <h3>🎬 Timeline</h3>
+        <h3>🎬 {t('timeline.title')}</h3>
         <div className="timeline-controls">
           <button
             className="timeline-btn"
             onClick={() => setZoom(z => Math.max(20, z - 10))}
-            title="Zoom -"
+            title={t('timeline.zoomOut')}
           >
             ➖
           </button>
@@ -156,7 +153,7 @@ function Timeline({
           <button
             className="timeline-btn"
             onClick={() => setZoom(z => Math.min(200, z + 10))}
-            title="Zoom +"
+            title={t('timeline.zoomIn')}
           >
             ➕
           </button>
@@ -164,38 +161,35 @@ function Timeline({
       </div>
 
       <div className="timeline-body" onScroll={handleScroll} ref={timelineRef}>
-        {/* Règle du temps */}
         <div
           className="timeline-ruler"
           style={{ width: totalDuration * zoom }}
           onClick={handleRulerClick}
         >
-          {timeMarkers.map(t => (
+          {timeMarkers.map(marker => (
             <div
-              key={t}
+              key={marker}
               className="time-marker"
-              style={{ left: t * zoom }}
+              style={{ left: marker * zoom }}
             >
-              <span>{formatTime(t)}</span>
+              <span>{formatTime(marker)}</span>
             </div>
           ))}
-          {/* Curseur de lecture */}
           <div
             className={`playhead ${isPlaying ? "playing" : ""}`}
             style={{ left: currentTime * zoom }}
           />
         </div>
 
-        {/* Piste vidéo */}
         <div className="timeline-track video-track">
-          <div className="track-label">🎥 Vidéo</div>
+          <div className="track-label">🎥 {t('timeline.videoTrack')}</div>
           <div
             className="track-content"
             style={{ width: totalDuration * zoom }}
           >
             {videoClips.length === 0 ? (
               <div className="track-empty">
-                <span>Glissez des vidéos ici</span>
+                <span>{t('timeline.dropVideos')}</span>
               </div>
             ) : (
               videoClips.map(clip => (
@@ -217,16 +211,15 @@ function Timeline({
           </div>
         </div>
 
-        {/* Piste audio */}
         <div className="timeline-track audio-track">
-          <div className="track-label">🎙️ Audio</div>
+          <div className="track-label">🎙️ {t('timeline.audioTrack')}</div>
           <div
             className="track-content"
             style={{ width: totalDuration * zoom }}
           >
             {audioClips.length === 0 ? (
               <div className="track-empty">
-                <span>Les clips audio générés apparaîtront ici</span>
+                <span>{t('timeline.audioClipsAppear')}</span>
               </div>
             ) : (
               audioClips.map(clip => (
@@ -239,7 +232,7 @@ function Timeline({
                   }}
                   onClick={() => handleClipClick(clip.id, "audio")}
                   onDoubleClick={() => handleClipDoubleClick(clip)}
-                  title={`Double-cliquez pour écouter: ${clip.name}`}
+                  title={t('timeline.doubleClickToPlay', { name: clip.name })}
                 >
                   <div className="clip-waveform">
                     {(waveformHeights[clip.id] || []).map((height, i) => (
@@ -261,7 +254,7 @@ function Timeline({
 
       {isPlaying && (
         <div className="timeline-playback-indicator">
-          ▶️ Lecture en cours - {formatTime(currentTime)}
+          ▶️ {t('timeline.playbackIndicator', { time: formatTime(currentTime) })}
         </div>
       )}
     </div>

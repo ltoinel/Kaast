@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
+import { useTranslation } from "react-i18next";
 import "./App.css";
 import { isTauriAvailable } from "./utils/tauri";
 import { Project, setCurrentProject, getCurrentProject } from "./utils/project";
@@ -60,6 +61,7 @@ const IconGear = () => (
 );
 
 function App() {
+  const { t } = useTranslation();
   const [currentProject, setProject] = useState<Project | null>(null);
   const [activeTab, setActiveTab] = useState<TabType>("editor");
   const [audioClips, setAudioClips] = useState<AudioClip[]>([]);
@@ -69,7 +71,7 @@ function App() {
   const autoSaveRef = useRef<number | null>(null);
   const lastSaveRef = useRef<string>("");
 
-  // Charger les fichiers audio du répertoire du projet
+  // Load audio files from project directory
   const loadProjectAudioFiles = useCallback(async (projectPath: string) => {
     if (!isTauriAvailable()) return;
 
@@ -97,11 +99,11 @@ function App() {
         setAudioClips(newClips);
       }
     } catch (error) {
-      console.log("Pas de fichiers audio trouvés:", error);
+      console.log("No audio files found:", error);
     }
   }, []);
 
-  // Sauvegarder la timeline dans le fichier JSON du projet
+  // Save timeline to project JSON file
   const saveTimeline = useCallback(async () => {
     if (!currentProject || !isTauriAvailable()) return;
 
@@ -121,11 +123,11 @@ function App() {
       await writeTextFile(timelinePath, jsonString);
       lastSaveRef.current = jsonString;
     } catch (error) {
-      console.error("Erreur sauvegarde timeline:", error);
+      console.error("Timeline save error:", error);
     }
   }, [currentProject, audioClips, videoClips]);
 
-  // Charger la timeline depuis le fichier JSON du projet
+  // Load timeline from project JSON file
   const loadTimeline = useCallback(async (projectPath: string) => {
     if (!isTauriAvailable()) return;
 
@@ -147,7 +149,7 @@ function App() {
     }
   }, [loadProjectAudioFiles]);
 
-  // Auto-sauvegarde toutes les minutes
+  // Auto-save every minute
   useEffect(() => {
     if (currentProject && !showStartup) {
       autoSaveRef.current = window.setInterval(() => {
@@ -217,15 +219,15 @@ function App() {
       const files = await open({
         multiple: true,
         filters: [
-          { name: "Médias", extensions: ["mp4", "mov", "avi", "mkv", "mp3", "wav", "m4a", "ogg"] },
-          { name: "Vidéos", extensions: ["mp4", "mov", "avi", "mkv", "webm"] },
-          { name: "Audio", extensions: ["mp3", "wav", "m4a", "ogg", "flac"] },
+          { name: t('app.filterMedia'), extensions: ["mp4", "mov", "avi", "mkv", "mp3", "wav", "m4a", "ogg"] },
+          { name: t('app.filterVideo'), extensions: ["mp4", "mov", "avi", "mkv", "webm"] },
+          { name: t('app.filterAudio'), extensions: ["mp3", "wav", "m4a", "ogg", "flac"] },
         ],
       });
 
       if (files && Array.isArray(files)) {
         for (const file of files) {
-          const fileName = file.split("/").pop() || "Média";
+          const fileName = file.split("/").pop() || "Media";
           const ext = fileName.split(".").pop()?.toLowerCase() || "";
 
           if (["mp4", "mov", "avi", "mkv", "webm"].includes(ext)) {
@@ -250,7 +252,7 @@ function App() {
         }
       }
     } catch (error) {
-      console.error("Erreur import médias:", error);
+      console.error("Media import error:", error);
     }
   };
 
@@ -266,7 +268,7 @@ function App() {
           <button
             className="new-project-btn"
             onClick={handleNewProject}
-            title="Nouveau projet"
+            title={t('app.newProject')}
           >
             <IconPlus />
           </button>
@@ -276,7 +278,7 @@ function App() {
           <button
             className={`nav-item ${activeTab === "editor" ? "active" : ""}`}
             onClick={() => setActiveTab("editor")}
-            title="Script"
+            title={t('app.script')}
           >
             <span className="nav-icon"><IconDocument /></span>
           </button>
@@ -284,7 +286,7 @@ function App() {
           <button
             className={`nav-item ${activeTab === "scenes" ? "active" : ""}`}
             onClick={() => setActiveTab("scenes")}
-            title="Scènes"
+            title={t('app.scenes')}
           >
             <span className="nav-icon"><IconFilm /></span>
           </button>
@@ -292,7 +294,7 @@ function App() {
           <button
             className={`nav-item ${activeTab === "edit" ? "active" : ""}`}
             onClick={() => setActiveTab("edit")}
-            title="Montage"
+            title={t('app.edit')}
           >
             <span className="nav-icon"><IconScissors /></span>
             {(audioClips.length + videoClips.length) > 0 && (
@@ -305,14 +307,14 @@ function App() {
           <button
             className={`nav-item ${activeTab === "settings" ? "active" : ""}`}
             onClick={() => setActiveTab("settings")}
-            title="Paramètres"
+            title={t('app.settings')}
           >
             <span className="nav-icon"><IconGear /></span>
           </button>
           <button
             className={`nav-item ${showConsole ? "active" : ""}`}
             onClick={() => setShowConsole(!showConsole)}
-            title="Console"
+            title={t('app.console')}
           >
             <span className="nav-icon"><IconTerminal /></span>
           </button>
@@ -323,7 +325,7 @@ function App() {
       <main className="app-main">
         {/* Project Header */}
         <header className="project-header">
-          <h2>{currentProject?.name || "Projet"}</h2>
+          <h2>{currentProject?.name || t('app.project')}</h2>
           <span className="project-path">{currentProject?.path}</span>
         </header>
 

@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from "react";
+import { useTranslation } from "react-i18next";
 import "./EditPage.css";
 import type { AudioClip, VideoClip } from "../types";
 import Timeline from "./Timeline";
@@ -13,6 +14,7 @@ interface EditPageProps {
 }
 
 function EditPage({ audioClips, videoClips, onAddMedia, onDeleteClip }: EditPageProps) {
+  const { t } = useTranslation();
   const [selectedClip, setSelectedClip] = useState<AudioClip | VideoClip | null>(null);
   const [selectedClipType, setSelectedClipType] = useState<"audio" | "video" | null>(null);
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
@@ -24,7 +26,6 @@ function EditPage({ audioClips, videoClips, onAddMedia, onDeleteClip }: EditPage
   const videoRef = useRef<HTMLVideoElement>(null);
   const audioRef = useRef<HTMLAudioElement>(null);
 
-  // Calculer la durée totale du projet
   useEffect(() => {
     const totalDuration = Math.max(
       ...audioClips.map(c => c.startTime + c.duration),
@@ -38,11 +39,11 @@ function EditPage({ audioClips, videoClips, onAddMedia, onDeleteClip }: EditPage
     const hrs = Math.floor(seconds / 3600);
     const mins = Math.floor((seconds % 3600) / 60);
     const secs = Math.floor(seconds % 60);
-    const frames = Math.floor((seconds % 1) * 25); // 25 fps
+    const frames = Math.floor((seconds % 1) * 25);
     return `${hrs.toString().padStart(2, "0")}:${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}:${frames.toString().padStart(2, "0")}`;
   };
 
-  // Charger le premier clip audio quand disponible
+  // Load first audio clip when available
   useEffect(() => {
     const loadFirstClip = async () => {
       if (audioClips.length > 0 && !currentAudioSrc) {
@@ -55,7 +56,7 @@ function EditPage({ audioClips, videoClips, onAddMedia, onDeleteClip }: EditPage
             audioRef.current.load();
           }
         } catch (err) {
-          console.error("Erreur chargement audio:", err);
+          console.error("Audio load error:", err);
           try {
             const url = await convertToAssetUrl(firstClip.path);
             setCurrentAudioSrc(url);
@@ -64,7 +65,7 @@ function EditPage({ audioClips, videoClips, onAddMedia, onDeleteClip }: EditPage
               audioRef.current.load();
             }
           } catch (e) {
-            console.error("Fallback échoué:", e);
+            console.error("Fallback failed:", e);
           }
         }
       }
@@ -73,7 +74,7 @@ function EditPage({ audioClips, videoClips, onAddMedia, onDeleteClip }: EditPage
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [audioClips]);
 
-  // Charger le premier clip vidéo quand disponible
+  // Load first video clip when available
   useEffect(() => {
     const loadFirstVideoClip = async () => {
       if (videoClips.length > 0 && !currentVideoSrc) {
@@ -95,7 +96,6 @@ function EditPage({ audioClips, videoClips, onAddMedia, onDeleteClip }: EditPage
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Configurer l'audio source
   useEffect(() => {
     if (audioRef.current && currentAudioSrc) {
       audioRef.current.src = currentAudioSrc;
@@ -111,7 +111,6 @@ function EditPage({ audioClips, videoClips, onAddMedia, onDeleteClip }: EditPage
       audio.pause();
       setIsPlaying(false);
     } else {
-      // Vérifier qu'on a une source
       if (!audio.src || audio.src === window.location.href) {
         if (audioClips.length > 0) {
           try {
@@ -124,7 +123,7 @@ function EditPage({ audioClips, videoClips, onAddMedia, onDeleteClip }: EditPage
               audio.addEventListener('canplay', resolve, { once: true });
             });
           } catch (err) {
-            console.error("Erreur chargement:", err);
+            console.error("Load error:", err);
             return;
           }
         } else {
@@ -137,7 +136,7 @@ function EditPage({ audioClips, videoClips, onAddMedia, onDeleteClip }: EditPage
         await audio.play();
         setIsPlaying(true);
       } catch (err) {
-        console.error("Erreur play():", err);
+        console.error("Play error:", err);
       }
     }
   }, [isPlaying, currentTime, audioClips, currentAudioSrc]);
@@ -160,7 +159,7 @@ function EditPage({ audioClips, videoClips, onAddMedia, onDeleteClip }: EditPage
     setCurrentTime(time);
   }, []);
 
-  // Supprimer le clip sélectionné avec la touche Delete/Suppr
+  // Delete selected clip with Delete key
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Delete" && selectedClip && selectedClipType && onDeleteClip) {
@@ -186,7 +185,7 @@ function EditPage({ audioClips, videoClips, onAddMedia, onDeleteClip }: EditPage
         const url = await loadAudioAsBlob(clip.path);
         setCurrentAudioSrc(url);
       } catch (err) {
-        console.error("Erreur chargement clip:", err);
+        console.error("Clip load error:", err);
       }
     }
   }, [audioClips, videoClips, currentAudioSrc]);
@@ -208,12 +207,12 @@ function EditPage({ audioClips, videoClips, onAddMedia, onDeleteClip }: EditPage
           }
         }, 100);
       } catch (err) {
-        console.error("Erreur lecture clip:", err);
+        console.error("Clip playback error:", err);
       }
     }
   }, [currentAudioSrc]);
 
-  // Animation fluide du curseur de lecture
+  // Smooth playback cursor animation
   useEffect(() => {
     let animationFrameId: number;
 
@@ -236,7 +235,7 @@ function EditPage({ audioClips, videoClips, onAddMedia, onDeleteClip }: EditPage
     };
   }, [isPlaying]);
 
-  // Gérer la fin de lecture et les erreurs
+  // Handle playback end and errors
   useEffect(() => {
     const audio = audioRef.current;
     if (!audio) return;
@@ -248,7 +247,7 @@ function EditPage({ audioClips, videoClips, onAddMedia, onDeleteClip }: EditPage
 
     const handleError = (e: Event) => {
       const audioEl = e.target as HTMLAudioElement;
-      console.error("Erreur audio:", audioEl.error?.message || "Erreur inconnue");
+      console.error("Audio error:", audioEl.error?.message || "Unknown error");
       setIsPlaying(false);
     };
 
@@ -270,8 +269,8 @@ function EditPage({ audioClips, videoClips, onAddMedia, onDeleteClip }: EditPage
         {/* Media Browser Panel */}
         <div className="media-browser">
           <div className="panel-header">
-            <span className="panel-title">🎬 Médias</span>
-            <button className="panel-btn" onClick={onAddMedia} title="Importer">
+            <span className="panel-title">🎬 {t('edit.mediaTitle')}</span>
+            <button className="panel-btn" onClick={onAddMedia} title={t('edit.import')}>
               ➕
             </button>
           </div>
@@ -279,9 +278,9 @@ function EditPage({ audioClips, videoClips, onAddMedia, onDeleteClip }: EditPage
             {audioClips.length === 0 && videoClips.length === 0 ? (
               <div className="media-empty">
                 <span className="empty-icon">📁</span>
-                <p>Aucun média</p>
+                <p>{t('edit.noMedia')}</p>
                 <button className="btn btn-primary btn-sm" onClick={onAddMedia}>
-                  Importer des fichiers
+                  {t('edit.importFiles')}
                 </button>
               </div>
             ) : (
@@ -330,10 +329,10 @@ function EditPage({ audioClips, videoClips, onAddMedia, onDeleteClip }: EditPage
         {/* Preview Monitor */}
         <div className="preview-monitor">
           <div className="panel-header">
-            <span className="panel-title">📺 Prévisualisation</span>
+            <span className="panel-title">📺 {t('edit.previewTitle')}</span>
             <div className="monitor-tabs">
-              <button className="tab-btn active">Source</button>
-              <button className="tab-btn">Programme</button>
+              <button className="tab-btn active">{t('edit.source')}</button>
+              <button className="tab-btn">{t('edit.program')}</button>
             </div>
           </div>
           <div className="monitor-viewport">
@@ -347,13 +346,12 @@ function EditPage({ audioClips, videoClips, onAddMedia, onDeleteClip }: EditPage
               ) : (
                 <div className="viewport-placeholder">
                   <span className="placeholder-icon">🎬</span>
-                  <p>Aucune vidéo à prévisualiser</p>
-                  <p className="placeholder-hint">Importez des fichiers vidéo pour commencer</p>
+                  <p>{t('edit.noVideoPreview')}</p>
+                  <p className="placeholder-hint">{t('edit.importVideoHint')}</p>
                 </div>
               )}
             </div>
 
-            {/* Timecode Display */}
             <div className="timecode-display">
               <span className="timecode">{formatTimecode(currentTime)}</span>
               <span className="timecode-separator">/</span>
@@ -364,10 +362,10 @@ function EditPage({ audioClips, videoClips, onAddMedia, onDeleteClip }: EditPage
           {/* Transport Controls */}
           <div className="transport-controls">
             <div className="transport-left">
-              <button className="transport-btn" title="Aller au début" onClick={handleStop}>
+              <button className="transport-btn" title={t('edit.goToStart')} onClick={handleStop}>
                 ⏮️
               </button>
-              <button className="transport-btn" title="Image précédente">
+              <button className="transport-btn" title={t('edit.previousFrame')}>
                 ⏪
               </button>
             </div>
@@ -375,16 +373,16 @@ function EditPage({ audioClips, videoClips, onAddMedia, onDeleteClip }: EditPage
             <button
               className={`transport-btn play-btn ${isPlaying ? "playing" : ""}`}
               onClick={handlePlayPause}
-              title={isPlaying ? "Pause" : "Lecture"}
+              title={isPlaying ? t('edit.pause') : t('edit.play')}
             >
               {isPlaying ? "⏸️" : "▶️"}
             </button>
 
             <div className="transport-right">
-              <button className="transport-btn" title="Image suivante">
+              <button className="transport-btn" title={t('edit.nextFrame')}>
                 ⏩
               </button>
-              <button className="transport-btn" title="Aller à la fin">
+              <button className="transport-btn" title={t('edit.goToEnd')}>
                 ⏭️
               </button>
             </div>
@@ -411,32 +409,32 @@ function EditPage({ audioClips, videoClips, onAddMedia, onDeleteClip }: EditPage
         {/* Inspector Panel */}
         <div className="inspector-panel">
           <div className="panel-header">
-            <span className="panel-title">🔍 Inspecteur</span>
+            <span className="panel-title">🔍 {t('edit.inspectorTitle')}</span>
           </div>
           <div className="inspector-content">
             {selectedClip ? (
               <div className="clip-properties">
-                <h4>Propriétés du clip</h4>
+                <h4>{t('edit.clipProperties')}</h4>
                 <div className="property-group">
-                  <label>Nom</label>
+                  <label>{t('edit.name')}</label>
                   <input type="text" value={selectedClip.name} readOnly />
                 </div>
                 <div className="property-group">
-                  <label>Durée</label>
+                  <label>{t('edit.duration')}</label>
                   <span className="property-value">{formatTimecode(selectedClip.duration)}</span>
                 </div>
                 <div className="property-group">
-                  <label>Position</label>
+                  <label>{t('edit.position')}</label>
                   <span className="property-value">{formatTimecode(selectedClip.startTime)}</span>
                 </div>
                 <div className="property-group">
-                  <label>Chemin</label>
+                  <label>{t('edit.path')}</label>
                   <span className="property-value path">{selectedClip.path}</span>
                 </div>
               </div>
             ) : (
               <div className="inspector-empty">
-                <p>Sélectionnez un clip pour voir ses propriétés</p>
+                <p>{t('edit.selectClip')}</p>
               </div>
             )}
           </div>

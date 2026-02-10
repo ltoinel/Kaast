@@ -1,5 +1,7 @@
 import { useState, useEffect } from "react";
+import { useTranslation } from "react-i18next";
 import { safeInvoke, getTauriErrorMessage } from "../utils/tauri";
+import { SUPPORTED_LANGUAGES } from "../i18n";
 import "./Settings.css";
 
 interface SettingsProps {
@@ -9,6 +11,7 @@ interface SettingsProps {
 const GEMINI_API_KEY_STORAGE = "gemini_api_key";
 
 function Settings({ onClose }: SettingsProps) {
+  const { t, i18n } = useTranslation();
   const [apiKey, setApiKey] = useState("");
   const [isSaved, setIsSaved] = useState(false);
   const [showKey, setShowKey] = useState(false);
@@ -20,7 +23,6 @@ function Settings({ onClose }: SettingsProps) {
     if (savedKey) {
       setApiKey(savedKey);
     }
-    // Vérifier FFmpeg
     const checkFfmpeg = async () => {
       try {
         const result = await safeInvoke<string>("check_ffmpeg");
@@ -43,7 +45,7 @@ function Settings({ onClose }: SettingsProps) {
   };
 
   const handleClear = () => {
-    if (confirm("Êtes-vous sûr de vouloir supprimer votre clé API ?")) {
+    if (confirm(t('settings.confirmDeleteKey'))) {
       localStorage.removeItem(GEMINI_API_KEY_STORAGE);
       setApiKey("");
       setIsSaved(false);
@@ -53,10 +55,10 @@ function Settings({ onClose }: SettingsProps) {
   return (
     <div className="settings-panel">
       <div className="settings-header">
-        <h2>Paramètres</h2>
+        <h2>{t('settings.title')}</h2>
         {onClose && (
           <button onClick={onClose} className="btn btn-secondary">
-            ← Retour
+            {t('settings.back')}
           </button>
         )}
       </div>
@@ -68,20 +70,20 @@ function Settings({ onClose }: SettingsProps) {
             <div className="section-header">
               <span className="section-icon">🔑</span>
               <div>
-                <h3>Clé API Gemini</h3>
+                <h3>{t('settings.apiKeyTitle')}</h3>
                 <p className="section-description">
-                  Nécessaire pour la génération de scripts et de voix
+                  {t('settings.apiKeyDescription')}
                 </p>
               </div>
             </div>
 
             <div className="form-group">
-              <label htmlFor="api-key-setting">Clé API</label>
+              <label htmlFor="api-key-setting">{t('settings.apiKeyLabel')}</label>
               <div className="input-with-toggle">
                 <input
                   id="api-key-setting"
                   type={showKey ? "text" : "password"}
-                  placeholder="AIzaSy..."
+                  placeholder={t('settings.apiKeyPlaceholder')}
                   value={apiKey}
                   onChange={(e) => setApiKey(e.target.value)}
                   className="input-field"
@@ -90,7 +92,7 @@ function Settings({ onClose }: SettingsProps) {
                   type="button"
                   onClick={() => setShowKey(!showKey)}
                   className="btn-toggle"
-                  title={showKey ? "Masquer" : "Afficher"}
+                  title={showKey ? t('settings.hideKey') : t('settings.showKey')}
                 >
                   {showKey ? "👁️" : "👁️‍🗨️"}
                 </button>
@@ -103,18 +105,18 @@ function Settings({ onClose }: SettingsProps) {
                 disabled={!apiKey.trim()}
                 className="btn btn-primary"
               >
-                Sauvegarder
+                {t('settings.save')}
               </button>
               {apiKey && (
                 <button onClick={handleClear} className="btn btn-secondary">
-                  Supprimer
+                  {t('settings.delete')}
                 </button>
               )}
             </div>
 
             {isSaved && (
               <div className="success-message">
-                ✓ Clé API sauvegardée
+                {t('settings.apiKeySaved')}
               </div>
             )}
           </section>
@@ -124,9 +126,9 @@ function Settings({ onClose }: SettingsProps) {
             <div className="section-header">
               <span className="section-icon">ℹ️</span>
               <div>
-                <h3>Obtenir une clé API</h3>
+                <h3>{t('settings.getApiKeyTitle')}</h3>
                 <p className="section-description">
-                  Gratuit avec un compte Google
+                  {t('settings.getApiKeyDescription')}
                 </p>
               </div>
             </div>
@@ -138,14 +140,14 @@ function Settings({ onClose }: SettingsProps) {
                 rel="noopener noreferrer"
                 className="external-link-btn"
               >
-                Ouvrir Google AI Studio →
+                {t('settings.openGoogleAIStudio')}
               </a>
-              
+
               <ol className="steps-list">
-                <li>Connectez-vous avec votre compte Google</li>
-                <li>Cliquez sur "Create API Key"</li>
-                <li>Copiez la clé générée</li>
-                <li>Collez-la dans le champ ci-dessus</li>
+                <li>{t('settings.step1')}</li>
+                <li>{t('settings.step2')}</li>
+                <li>{t('settings.step3')}</li>
+                <li>{t('settings.step4')}</li>
               </ol>
             </div>
           </section>
@@ -155,23 +157,49 @@ function Settings({ onClose }: SettingsProps) {
             <div className="section-header">
               <span className="section-icon">🔧</span>
               <div>
-                <h3>FFmpeg</h3>
+                <h3>{t('settings.ffmpegTitle')}</h3>
                 <p className="section-description">
-                  Requis pour le montage vidéo et l'export
+                  {t('settings.ffmpegDescription')}
                 </p>
               </div>
             </div>
             <div className="ffmpeg-info">
               <div className={`ffmpeg-badge ${ffmpegAvailable ? "available" : "missing"}`}>
                 <span className="ffmpeg-dot" />
-                {ffmpegAvailable ? "Installé" : "Non disponible"}
+                {ffmpegAvailable ? t('settings.ffmpegInstalled') : t('settings.ffmpegMissing')}
               </div>
-              <p className="ffmpeg-detail">{ffmpegStatus || "Vérification en cours..."}</p>
+              <p className="ffmpeg-detail">{ffmpegStatus || t('settings.ffmpegChecking')}</p>
               {!ffmpegAvailable && (
                 <p className="text-muted">
-                  FFmpeg embarqué introuvable. Lancez <code>npm run download-ffmpeg</code> puis relancez l'application.
+                  {t('settings.ffmpegHelp')}
                 </p>
               )}
+            </div>
+          </section>
+
+          {/* Language Section */}
+          <section className="settings-section">
+            <div className="section-header">
+              <span className="section-icon">🌐</span>
+              <div>
+                <h3>{t('settings.languageTitle')}</h3>
+                <p className="section-description">
+                  {t('settings.languageDescription')}
+                </p>
+              </div>
+            </div>
+            <div className="form-group">
+              <select
+                value={i18n.language?.substring(0, 2)}
+                onChange={(e) => i18n.changeLanguage(e.target.value)}
+                className="input-field"
+              >
+                {SUPPORTED_LANGUAGES.map(lang => (
+                  <option key={lang.code} value={lang.code}>
+                    {lang.label}
+                  </option>
+                ))}
+              </select>
             </div>
           </section>
 
@@ -180,17 +208,16 @@ function Settings({ onClose }: SettingsProps) {
             <div className="section-header">
               <span className="section-icon">🎙️</span>
               <div>
-                <h3>À propos de Kaast</h3>
+                <h3>{t('settings.aboutTitle')}</h3>
                 <p className="section-description">
-                  Éditeur de podcasts avec IA
+                  {t('settings.aboutDescription')}
                 </p>
               </div>
             </div>
             <div className="about-content">
               <p>Version 1.0.0</p>
               <p className="text-muted">
-                Kaast utilise l'API Gemini pour générer des scripts de podcasts
-                et des voix naturelles à partir de vos sources.
+                {t('settings.aboutText')}
               </p>
             </div>
           </section>

@@ -1,7 +1,7 @@
 [package]
 name = "kaast"
 version = "0.1.0"
-description = "Kaast : un éditeur de podcasts avec IA pour Windows, Linux et macOS"
+description = "Kaast: an AI-powered podcast editor for Windows, Linux, and macOS"
 authors = ["vous"]
 edition = "2021"
 
