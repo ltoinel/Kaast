@@ -1,0 +1,285 @@
+/* Timeline - DaVinci Resolve Style */
+.timeline {
+  height: 100%;
+  background: var(--bg-primary);
+  display: flex;
+  flex-direction: column;
+  font-family: var(--font-family);
+}
+
+.timeline-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: var(--spacing-sm) var(--spacing-md);
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.timeline-header h3 {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  margin: 0;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.timeline-controls {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+}
+
+.timeline-btn {
+  padding: var(--spacing-xs) var(--spacing-sm);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 0.7rem;
+  transition: all var(--transition-fast);
+}
+
+.timeline-btn:hover {
+  background: var(--bg-hover);
+  border-color: var(--border-strong);
+  color: var(--text-primary);
+}
+
+.zoom-level {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  min-width: 45px;
+  text-align: center;
+  font-family: var(--font-mono);
+}
+
+.timeline-body {
+  flex: 1;
+  overflow-x: auto;
+  overflow-y: hidden;
+  position: relative;
+  background: var(--bg-primary);
+}
+
+.timeline-ruler {
+  height: 24px;
+  background: var(--bg-tertiary);
+  border-bottom: 1px solid var(--border-default);
+  position: relative;
+  min-width: 100%;
+  cursor: pointer;
+}
+
+.timeline-ruler:hover {
+  background: var(--bg-hover);
+}
+
+.time-marker {
+  position: absolute;
+  top: 0;
+  height: 100%;
+  border-left: 1px solid var(--border-default);
+}
+
+.time-marker:nth-child(2n) {
+  border-left-color: var(--border-subtle);
+}
+
+.time-marker span {
+  position: absolute;
+  top: 6px;
+  left: 5px;
+  font-size: 0.65rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+  font-family: var(--font-mono);
+}
+
+.playhead {
+  position: absolute;
+  top: 0;
+  width: 2px;
+  background: var(--accent-primary);
+  z-index: 100;
+  pointer-events: none;
+  height: calc(100% + 200px);
+}
+
+.playhead::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -5px;
+  width: 12px;
+  height: 12px;
+  background: var(--accent-primary);
+  clip-path: polygon(0 0, 100% 0, 50% 100%);
+}
+
+.playhead.playing {
+  box-shadow: 0 0 8px rgba(224, 112, 32, 0.5);
+}
+
+.timeline-track {
+  display: flex;
+  min-height: 56px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.timeline-track:last-child {
+  border-bottom: none;
+}
+
+.track-label {
+  width: 80px;
+  min-width: 80px;
+  padding: var(--spacing-sm) var(--spacing-md);
+  background: var(--bg-secondary);
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  border-right: 1px solid var(--border-default);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  font-weight: 500;
+}
+
+.track-content {
+  flex: 1;
+  position: relative;
+  background: var(--bg-primary);
+  min-width: 100%;
+}
+
+.track-empty {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-disabled);
+  font-size: 0.7rem;
+  font-style: italic;
+}
+
+.video-track .track-content {
+  background: #1e2026;
+}
+
+.audio-track .track-content {
+  background: #1a201e;
+}
+
+.timeline-clip {
+  position: absolute;
+  top: 4px;
+  bottom: 4px;
+  border-radius: var(--radius-sm);
+  padding: var(--spacing-xs) var(--spacing-sm);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  border: 1px solid transparent;
+}
+
+.timeline-clip:hover {
+  filter: brightness(1.1);
+  border-color: rgba(255, 255, 255, 0.15);
+}
+
+.timeline-clip.selected {
+  border-color: var(--accent-primary);
+  box-shadow: 0 0 0 1px var(--accent-primary);
+}
+
+.video-clip {
+  background: #3d6da8;
+}
+
+.audio-clip {
+  background: #3d8a4d;
+}
+
+.clip-name {
+  font-size: 0.7rem;
+  font-weight: 500;
+  color: white;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  z-index: 2;
+}
+
+.clip-duration {
+  font-size: 0.6rem;
+  color: rgba(255, 255, 255, 0.7);
+  z-index: 2;
+  font-family: var(--font-mono);
+}
+
+.clip-waveform {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-evenly;
+  padding: var(--spacing-xs);
+  opacity: 0.2;
+}
+
+.waveform-bar {
+  width: 2px;
+  background: white;
+  border-radius: 1px;
+}
+
+.timeline-playback-indicator {
+  padding: var(--spacing-xs) var(--spacing-md);
+  background: var(--bg-secondary);
+  border-top: 1px solid var(--border-default);
+  font-size: 0.75rem;
+  color: var(--accent-success);
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+}
+
+.timeline-playback-indicator::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  background: var(--accent-success);
+  border-radius: 50%;
+  animation: blink 1s infinite;
+}
+
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
+/* Scrollbar styling */
+.timeline-body::-webkit-scrollbar {
+  height: 8px;
+}
+
+.timeline-body::-webkit-scrollbar-track {
+  background: var(--bg-secondary);
+}
+
+.timeline-body::-webkit-scrollbar-thumb {
+  background: var(--bg-active);
+  border-radius: var(--radius-full);
+}
+
+.timeline-body::-webkit-scrollbar-thumb:hover {
+  background: var(--border-strong);
+}
