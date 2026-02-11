@@ -53,6 +53,14 @@ const IconSave = () => (
   </svg>
 );
 
+const IconSparkles = () => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="none">
+    <path d="M9.813 3.563a.5.5 0 0 1 .874 0l1.121 2.012a.5.5 0 0 0 .262.233l2.151.905a.5.5 0 0 1 0 .914l-2.151.905a.5.5 0 0 0-.262.233L10.687 10.777a.5.5 0 0 1-.874 0L8.692 8.765a.5.5 0 0 0-.262-.233l-2.151-.905a.5.5 0 0 1 0-.914l2.151-.905a.5.5 0 0 0 .262-.233L9.813 3.563z" />
+    <path d="M17.406 10.969a.5.5 0 0 1 .874 0l.813 1.458a.5.5 0 0 0 .262.233l1.559.655a.5.5 0 0 1 0 .914l-1.559.655a.5.5 0 0 0-.262.233l-.813 1.458a.5.5 0 0 1-.874 0l-.813-1.458a.5.5 0 0 0-.262-.233l-1.559-.655a.5.5 0 0 1 0-.914l1.559-.655a.5.5 0 0 0 .262-.233l.813-1.458z" />
+    <path d="M10.406 15.969a.5.5 0 0 1 .874 0l.813 1.458a.5.5 0 0 0 .262.233l1.559.655a.5.5 0 0 1 0 .914l-1.559.655a.5.5 0 0 0-.262.233l-.813 1.458a.5.5 0 0 1-.874 0l-.813-1.458a.5.5 0 0 0-.262-.233l-1.559-.655a.5.5 0 0 1 0-.914l1.559-.655a.5.5 0 0 0 .262-.233l.813-1.458z" />
+  </svg>
+);
+
 function ScriptEditor({ onAudioGenerated, onOpenSettings }: ScriptEditorProps) {
   const { t } = useTranslation();
   const [script, setScript] = useState<string>("");
@@ -124,7 +132,9 @@ function ScriptEditor({ onAudioGenerated, onOpenSettings }: ScriptEditorProps) {
 
   const renderedMarkdown = useMemo(() => {
     if (!script.trim()) return "";
-    return marked.parse(script) as string;
+    const html = marked.parse(script) as string;
+    // Highlight bracketed text [like this] in bold green
+    return html.replace(/(\[[^\]]+\])/g, '<span class="script-stage-direction">$1</span>');
   }, [script]);
 
   const getApiKey = useCallback((): string | null => {
@@ -253,7 +263,10 @@ function ScriptEditor({ onAudioGenerated, onOpenSettings }: ScriptEditorProps) {
                   {t('script.generating')}
                 </>
               ) : (
-                t('script.generate')
+                <>
+                  <IconSparkles />
+                  {t('script.generate')}
+                </>
               )}
             </button>
           </div>
@@ -306,7 +319,10 @@ function ScriptEditor({ onAudioGenerated, onOpenSettings }: ScriptEditorProps) {
                 {t('script.generatingAudio')}
               </>
             ) : (
-              t('script.generateAudio')
+              <>
+                <IconSparkles />
+                {t('script.generateAudio')}
+              </>
             )}
           </button>
         </div>

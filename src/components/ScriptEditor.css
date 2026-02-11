@@ -185,6 +185,7 @@
   resize: none;
   tab-size: 2;
   overflow-y: auto;
+  user-select: text;
 }
 
 .editor-textarea:focus {
@@ -202,6 +203,7 @@
   flex-direction: column;
   min-width: 0;
   overflow: hidden;
+  user-select: text;
 }
 
 .markdown-preview {
@@ -328,6 +330,12 @@
 .markdown-preview th {
   background: var(--bg-secondary);
   font-weight: 600;
+}
+
+/* Stage directions (bracketed text) */
+.script-stage-direction {
+  color: #4caf50;
+  font-weight: 700;
 }
 
 /* Status Bar */

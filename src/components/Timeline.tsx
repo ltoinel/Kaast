@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useMemo } from "react";
+import { useState, useRef, useEffect, useMemo, useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import "./Timeline.css";
 import { loadAudioAsBlob, revokeBlobUrl } from "../utils/tauri";
@@ -10,6 +10,7 @@ interface TimelineProps {
   videoClips?: VideoClip[];
   onClipSelect?: (clipId: string, type: "audio" | "video") => void;
   onPlayClip?: (clip: AudioClip | VideoClip) => void;
+  onMoveClip?: (clipId: string, type: "audio" | "video", newStartTime: number) => void;
   currentTime?: number;
   isPlaying?: boolean;
   onSeek?: (time: number) => void;
@@ -20,6 +21,7 @@ function Timeline({
   videoClips = [],
   onClipSelect,
   onPlayClip,
+  onMoveClip,
   currentTime: externalCurrentTime,
   isPlaying: externalIsPlaying,
   onSeek
@@ -30,6 +32,7 @@ function Timeline({
   const [scrollX, setScrollX] = useState<number>(0);
   const [internalIsPlaying, setInternalIsPlaying] = useState<boolean>(false);
   const [internalCurrentTime, setInternalCurrentTime] = useState<number>(0);
+  const [dragOverTrack, setDragOverTrack] = useState<"audio" | "video" | null>(null);
   const timelineRef = useRef<HTMLDivElement>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
@@ -111,6 +114,46 @@ function Timeline({
     setScrollX(e.currentTarget.scrollLeft);
   };
 
+  // Drag & Drop handlers
+  const handleDragStart = useCallback((e: React.DragEvent, clipId: string, type: "audio" | "video") => {
+    e.dataTransfer.setData("application/clip-id", clipId);
+    e.dataTransfer.setData("application/clip-type", type);
+    e.dataTransfer.effectAllowed = "move";
+  }, []);
+
+  const handleDragOver = useCallback((e: React.DragEvent, trackType: "audio" | "video") => {
+    // Allow drop — we validate type on drop
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+    setDragOverTrack(trackType);
+  }, []);
+
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    // Only clear if leaving the track-content (not entering a child)
+    const relatedTarget = e.relatedTarget as HTMLElement | null;
+    if (!e.currentTarget.contains(relatedTarget)) {
+      setDragOverTrack(null);
+    }
+  }, []);
+
+  const handleDrop = useCallback((e: React.DragEvent, trackType: "audio" | "video") => {
+    e.preventDefault();
+    setDragOverTrack(null);
+
+    const clipId = e.dataTransfer.getData("application/clip-id");
+    const clipType = e.dataTransfer.getData("application/clip-type") as "audio" | "video";
+
+    if (!clipId || !clipType || clipType !== trackType) return;
+    if (!onMoveClip) return;
+
+    // Calculate new startTime from drop position
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const newStartTime = Math.max(0, x / zoom);
+
+    onMoveClip(clipId, clipType, newStartTime);
+  }, [zoom, onMoveClip]);
+
   useEffect(() => {
     let animationFrame: number;
 
@@ -140,14 +183,14 @@ function Timeline({
       <audio ref={audioRef} onEnded={() => setInternalIsPlaying(false)} />
 
       <div className="timeline-header">
-        <h3>🎬 {t('timeline.title')}</h3>
+        <h3>{"\uD83C\uDFAC"} {t('timeline.title')}</h3>
         <div className="timeline-controls">
           <button
             className="timeline-btn"
             onClick={() => setZoom(z => Math.max(20, z - 10))}
             title={t('timeline.zoomOut')}
           >
-            ➖
+            {"\u2796"}
           </button>
           <span className="zoom-level">{zoom}px/s</span>
           <button
@@ -155,7 +198,7 @@ function Timeline({
             onClick={() => setZoom(z => Math.min(200, z + 10))}
             title={t('timeline.zoomIn')}
           >
-            ➕
+            {"\u2795"}
           </button>
         </div>
       </div>
@@ -182,10 +225,13 @@ function Timeline({
         </div>
 
         <div className="timeline-track video-track">
-          <div className="track-label">🎥 {t('timeline.videoTrack')}</div>
+          <div className="track-label">{"\uD83C\uDFA5"} {t('timeline.videoTrack')}</div>
           <div
-            className="track-content"
+            className={`track-content ${dragOverTrack === "video" ? "drag-over" : ""}`}
             style={{ width: totalDuration * zoom }}
+            onDragOver={(e) => handleDragOver(e, "video")}
+            onDragLeave={handleDragLeave}
+            onDrop={(e) => handleDrop(e, "video")}
           >
             {videoClips.length === 0 ? (
               <div className="track-empty">
@@ -200,6 +246,8 @@ function Timeline({
                     left: clip.startTime * zoom,
                     width: clip.duration * zoom,
                   }}
+                  draggable
+                  onDragStart={(e) => handleDragStart(e, clip.id, "video")}
                   onClick={() => handleClipClick(clip.id, "video")}
                   onDoubleClick={() => handleClipDoubleClick(clip)}
                 >
@@ -212,10 +260,13 @@ function Timeline({
         </div>
 
         <div className="timeline-track audio-track">
-          <div className="track-label">🎙️ {t('timeline.audioTrack')}</div>
+          <div className="track-label">{"\uD83C\uDF99\uFE0F"} {t('timeline.audioTrack')}</div>
           <div
-            className="track-content"
+            className={`track-content ${dragOverTrack === "audio" ? "drag-over" : ""}`}
             style={{ width: totalDuration * zoom }}
+            onDragOver={(e) => handleDragOver(e, "audio")}
+            onDragLeave={handleDragLeave}
+            onDrop={(e) => handleDrop(e, "audio")}
           >
             {audioClips.length === 0 ? (
               <div className="track-empty">
@@ -230,6 +281,8 @@ function Timeline({
                     left: clip.startTime * zoom,
                     width: Math.max(clip.duration * zoom, 100),
                   }}
+                  draggable
+                  onDragStart={(e) => handleDragStart(e, clip.id, "audio")}
                   onClick={() => handleClipClick(clip.id, "audio")}
                   onDoubleClick={() => handleClipDoubleClick(clip)}
                   title={t('timeline.doubleClickToPlay', { name: clip.name })}
@@ -254,7 +307,7 @@ function Timeline({
 
       {isPlaying && (
         <div className="timeline-playback-indicator">
-          ▶️ {t('timeline.playbackIndicator', { time: formatTime(currentTime) })}
+          {"\u25B6\uFE0F"} {t('timeline.playbackIndicator', { time: formatTime(currentTime) })}
         </div>
       )}
     </div>

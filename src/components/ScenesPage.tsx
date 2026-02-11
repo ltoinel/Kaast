@@ -1,8 +1,19 @@
-import { useState, useRef, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import "./ScenesPage.css";
-import { safeInvoke, getTauriErrorMessage, isTauriAvailable, loadAudioAsBlob, convertToAssetUrl, revokeBlobUrl } from "../utils/tauri";
+import { safeInvoke, getTauriErrorMessage, convertToAssetUrl } from "../utils/tauri";
 import type { AudioClip, VideoScene } from "../types";
+import RemotionPreview from "./RemotionPreview";
+import { useRemotionSync } from "../hooks/useRemotionSync";
+import type { PodcastCompositionProps } from "../remotion/PodcastComposition";
+
+const IconSparkles = () => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="none">
+    <path d="M9.813 3.563a.5.5 0 0 1 .874 0l1.121 2.012a.5.5 0 0 0 .262.233l2.151.905a.5.5 0 0 1 0 .914l-2.151.905a.5.5 0 0 0-.262.233L10.687 10.777a.5.5 0 0 1-.874 0L8.692 8.765a.5.5 0 0 0-.262-.233l-2.151-.905a.5.5 0 0 1 0-.914l2.151-.905a.5.5 0 0 0 .262-.233L9.813 3.563z" />
+    <path d="M17.406 10.969a.5.5 0 0 1 .874 0l.813 1.458a.5.5 0 0 0 .262.233l1.559.655a.5.5 0 0 1 0 .914l-1.559.655a.5.5 0 0 0-.262.233l-.813 1.458a.5.5 0 0 1-.874 0l-.813-1.458a.5.5 0 0 0-.262-.233l-1.559-.655a.5.5 0 0 1 0-.914l1.559-.655a.5.5 0 0 0 .262-.233l.813-1.458z" />
+    <path d="M10.406 15.969a.5.5 0 0 1 .874 0l.813 1.458a.5.5 0 0 0 .262.233l1.559.655a.5.5 0 0 1 0 .914l-1.559.655a.5.5 0 0 0-.262.233l-.813 1.458a.5.5 0 0 1-.874 0l-.813-1.458a.5.5 0 0 0-.262-.233l-1.559-.655a.5.5 0 0 1 0-.914l1.559-.655a.5.5 0 0 0 .262-.233l.813-1.458z" />
+  </svg>
+);
 
 interface ScenesPageProps {
   audioClips: AudioClip[];
@@ -16,11 +27,45 @@ function ScenesPage({ audioClips, projectPath, onOpenSettings }: ScenesPageProps
   const [script, setScript] = useState<string>("");
   const [isGenerating, setIsGenerating] = useState<boolean>(false);
   const [error, setError] = useState<string>("");
-  const [isPlaying, setIsPlaying] = useState<boolean>(false);
-  const [currentTime, setCurrentTime] = useState<number>(0);
-  const [duration, setDuration] = useState<number>(0);
-  const [audioSrc, setAudioSrc] = useState<string | null>(null);
-  const audioRef = useRef<HTMLAudioElement>(null);
+  const [resolvedUrls, setResolvedUrls] = useState<Record<string, string>>({});
+
+  // Total audio duration
+  const totalDuration = useMemo(() => {
+    return Math.max(
+      ...audioClips.map(c => c.startTime + c.duration),
+      0
+    );
+  }, [audioClips]);
+
+  // Remotion sync hook for audio playback
+  const {
+    playerRef,
+    currentTime,
+    isPlaying,
+    durationInFrames,
+    handlePlayPause,
+    handleSeek,
+  } = useRemotionSync({ totalDuration, volume: 1 });
+
+  // Resolve audio clip paths to Tauri asset URLs
+  useEffect(() => {
+    const paths = audioClips.map(c => c.path);
+    const uniquePaths = [...new Set(paths)];
+
+    let cancelled = false;
+    Promise.all(
+      uniquePaths.map(async (p) => {
+        const url = await convertToAssetUrl(p);
+        return [p, url] as const;
+      })
+    ).then((entries) => {
+      if (!cancelled) {
+        setResolvedUrls(Object.fromEntries(entries));
+      }
+    });
+
+    return () => { cancelled = true; };
+  }, [audioClips]);
 
   // Load script from project
   useEffect(() => {
@@ -55,104 +100,16 @@ function ScenesPage({ audioClips, projectPath, onOpenSettings }: ScenesPageProps
     loadScenes();
   }, [projectPath]);
 
-  // Load audio from first clip via Blob URL
-  useEffect(() => {
-    const loadAudio = async () => {
-      if (audioClips.length === 0 || !isTauriAvailable()) return;
-      revokeBlobUrl(audioSrc);
-
-      const clip = audioClips[0];
-      try {
-        const url = await loadAudioAsBlob(clip.path);
-        setAudioSrc(url);
-        if (audioRef.current) {
-          audioRef.current.src = url;
-          audioRef.current.load();
-        }
-      } catch (err) {
-        console.error("loadAudioAsBlob error:", err);
-        try {
-          const url = await convertToAssetUrl(clip.path);
-          setAudioSrc(url);
-          if (audioRef.current) {
-            audioRef.current.src = url;
-            audioRef.current.load();
-          }
-        } catch (err2) {
-          console.error("convertToAssetUrl fallback failed:", err2);
-        }
-      }
-    };
-    loadAudio();
-    return () => {
-      revokeBlobUrl(audioSrc);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [audioClips]);
-
-  // Playback cursor animation
-  useEffect(() => {
-    let animationFrameId: number;
-    const updateTime = () => {
-      if (audioRef.current && !audioRef.current.paused) {
-        setCurrentTime(audioRef.current.currentTime);
-        animationFrameId = requestAnimationFrame(updateTime);
-      }
-    };
-    if (isPlaying) {
-      animationFrameId = requestAnimationFrame(updateTime);
-    }
-    return () => {
-      if (animationFrameId) cancelAnimationFrame(animationFrameId);
-    };
-  }, [isPlaying]);
-
   const formatTime = (seconds: number): string => {
     const mins = Math.floor(seconds / 60);
     const secs = Math.floor(seconds % 60);
     return `${mins}:${secs.toString().padStart(2, "0")}`;
   };
 
-  const handlePlayPause = useCallback(async () => {
-    const audio = audioRef.current;
-    if (!audio || !audioSrc) return;
-
-    if (isPlaying) {
-      audio.pause();
-      setIsPlaying(false);
-      return;
-    }
-
-    if (audio.readyState < 2) {
-      try {
-        await new Promise<void>((resolve, reject) => {
-          const timeout = setTimeout(() => reject(new Error("Audio load timeout")), 10000);
-          audio.addEventListener("canplay", () => { clearTimeout(timeout); resolve(); }, { once: true });
-          audio.addEventListener("error", () => { clearTimeout(timeout); reject(new Error("Audio load error")); }, { once: true });
-        });
-      } catch (err) {
-        console.error("Audio load error:", err);
-        setError(t('scenes.errorLoadAudio'));
-        return;
-      }
-    }
-
-    try {
-      await audio.play();
-      setIsPlaying(true);
-    } catch (err) {
-      console.error("Playback error:", err);
-      setError(t('scenes.errorPlayAudio'));
-    }
-  }, [isPlaying, audioSrc, t]);
-
-  const handleSeek = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleSeekInput = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const time = parseFloat(e.target.value);
-    setCurrentTime(time);
-    if (audioRef.current) {
-      audioRef.current.currentTime = time;
-    }
-  };
+    handleSeek(time);
+  }, [handleSeek]);
 
   const handleGenerateScenes = async () => {
     const apiKey = localStorage.getItem("gemini_api_key");
@@ -209,20 +166,27 @@ function ScenesPage({ audioClips, projectPath, onOpenSettings }: ScenesPageProps
     }
   };
 
+  // Remotion composition props (audio only, no video on this page)
+  const compositionProps: PodcastCompositionProps = useMemo(() => ({
+    audioClips,
+    videoClips: [],
+    resolvedUrls,
+  }), [audioClips, resolvedUrls]);
+
   const totalScenesDuration = scenes.reduce((sum, s) => sum + s.duration, 0);
 
   return (
     <div className="scenes-page">
-      <audio
-        ref={audioRef}
-        onLoadedMetadata={() => {
-          if (audioRef.current) setDuration(audioRef.current.duration);
-        }}
-        onEnded={() => {
-          setIsPlaying(false);
-          setCurrentTime(0);
-        }}
-      />
+      {/* Hidden Remotion Player for audio playback */}
+      {audioClips.length > 0 && totalDuration > 0 && (
+        <div style={{ position: "absolute", width: 0, height: 0, overflow: "hidden" }}>
+          <RemotionPreview
+            playerRef={playerRef}
+            compositionProps={compositionProps}
+            durationInFrames={durationInFrames}
+          />
+        </div>
+      )}
 
       {/* Header */}
       <div className="scenes-header">
@@ -245,7 +209,10 @@ function ScenesPage({ audioClips, projectPath, onOpenSettings }: ScenesPageProps
               {t('scenes.analyzing')}
             </>
           ) : (
-            t('scenes.generateScenes')
+            <>
+              <IconSparkles />
+              {t('scenes.generateScenes')}
+            </>
           )}
         </button>
       </div>
@@ -258,23 +225,23 @@ function ScenesPage({ audioClips, projectPath, onOpenSettings }: ScenesPageProps
           <button
             className="audio-play-btn"
             onClick={handlePlayPause}
-            disabled={!audioSrc}
+            disabled={audioClips.length === 0}
           >
-            {isPlaying ? "⏸" : "▶"}
+            {isPlaying ? "\u23F8" : "\u25B6"}
           </button>
           <div className="audio-progress-wrapper">
             <input
               type="range"
               className="audio-progress"
               min="0"
-              max={duration || 0}
+              max={totalDuration || 0}
               step="0.1"
               value={currentTime}
-              onChange={handleSeek}
+              onChange={handleSeekInput}
             />
           </div>
           <span className="audio-time">
-            {formatTime(currentTime)} / {formatTime(duration)}
+            {formatTime(currentTime)} / {formatTime(totalDuration)}
           </span>
           <span className="audio-name">
             {audioClips[0]?.name}
@@ -288,13 +255,13 @@ function ScenesPage({ audioClips, projectPath, onOpenSettings }: ScenesPageProps
           <div className="scenes-empty">
             {!script.trim() ? (
               <>
-                <span className="empty-icon">📝</span>
+                <span className="empty-icon">{"\uD83D\uDCDD"}</span>
                 <p>{t('scenes.noScript')}</p>
                 <p className="empty-hint">{t('scenes.noScriptHint')}</p>
               </>
             ) : (
               <>
-                <span className="empty-icon">🎬</span>
+                <span className="empty-icon">{"\uD83C\uDFAC"}</span>
                 <p>{t('scenes.noScenes')}</p>
                 <p className="empty-hint">{t('scenes.noScenesHint')}</p>
               </>
@@ -309,7 +276,7 @@ function ScenesPage({ audioClips, projectPath, onOpenSettings }: ScenesPageProps
                   <span className="scene-duration">{scene.duration}s</span>
                 </div>
                 <p className="scene-description">{scene.description}</p>
-                <p className="scene-excerpt">« {scene.scriptExcerpt} »</p>
+                <p className="scene-excerpt">{"\u00AB"} {scene.scriptExcerpt} {"\u00BB"}</p>
               </div>
             ))}
           </div>

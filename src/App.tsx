@@ -8,10 +8,12 @@ import ScriptEditor from "./components/ScriptEditor";
 import ScenesPage from "./components/ScenesPage";
 import type { AudioClip, VideoClip } from "./types";
 import EditPage from "./components/EditPage";
+import PublishPage from "./components/PublishPage";
 import Settings from "./components/Settings";
 import DebugConsole from "./components/DebugConsole";
+import { useMediaDuration } from "./hooks/useMediaDuration";
 
-type TabType = "editor" | "scenes" | "edit" | "settings";
+type TabType = "editor" | "scenes" | "edit" | "publish" | "settings";
 
 // SVG Icon components
 const IconPlus = () => (
@@ -46,6 +48,14 @@ const IconScissors = () => (
   </svg>
 );
 
+const IconUpload = () => (
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+    <polyline points="17 8 12 3 7 8" />
+    <line x1="12" y1="3" x2="12" y2="15" />
+  </svg>
+);
+
 const IconTerminal = () => (
   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
     <polyline points="4 17 10 11 4 5" />
@@ -62,6 +72,7 @@ const IconGear = () => (
 
 function App() {
   const { t } = useTranslation();
+  const { probe } = useMediaDuration();
   const [currentProject, setProject] = useState<Project | null>(null);
   const [activeTab, setActiveTab] = useState<TabType>("editor");
   const [audioClips, setAudioClips] = useState<AudioClip[]>([]);
@@ -89,13 +100,21 @@ function App() {
       });
 
       if (audioFiles.length > 0) {
-        const newClips: AudioClip[] = audioFiles.map((file, index) => ({
-          id: `audio_${Date.now()}_${index}`,
-          name: file.name || "Audio",
-          path: `${projectPath}/${file.name}`,
-          duration: 30,
-          startTime: index * 30,
-        }));
+        let offset = 0;
+        const newClips: AudioClip[] = [];
+        for (let index = 0; index < audioFiles.length; index++) {
+          const file = audioFiles[index];
+          const filePath = `${projectPath}/${file.name}`;
+          const { duration: realDuration } = await probe(filePath);
+          newClips.push({
+            id: `audio_${Date.now()}_${index}`,
+            name: file.name || "Audio",
+            path: filePath,
+            duration: realDuration,
+            startTime: offset,
+          });
+          offset += realDuration;
+        }
         setAudioClips(newClips);
       }
     } catch (error) {
@@ -209,6 +228,14 @@ function App() {
     }
   }, []);
 
+  const handleMoveClip = useCallback((clipId: string, type: "audio" | "video", newStartTime: number) => {
+    if (type === "audio") {
+      setAudioClips(prev => prev.map(c => c.id === clipId ? { ...c, startTime: newStartTime } : c));
+    } else {
+      setVideoClips(prev => prev.map(c => c.id === clipId ? { ...c, startTime: newStartTime } : c));
+    }
+  }, []);
+
   const handleOpenSettings = () => {
     setActiveTab("settings");
   };
@@ -229,13 +256,14 @@ function App() {
         for (const file of files) {
           const fileName = file.split("/").pop() || "Media";
           const ext = fileName.split(".").pop()?.toLowerCase() || "";
+          const { duration: realDuration } = await probe(file);
 
           if (["mp4", "mov", "avi", "mkv", "webm"].includes(ext)) {
             const newClip: VideoClip = {
               id: `video_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
               name: fileName,
               path: file,
-              duration: 30,
+              duration: realDuration,
               startTime: videoClips.reduce((max, c) => Math.max(max, c.startTime + c.duration), 0),
             };
             setVideoClips(prev => [...prev, newClip]);
@@ -244,7 +272,7 @@ function App() {
               id: `audio_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
               name: fileName,
               path: file,
-              duration: 30,
+              duration: realDuration,
               startTime: audioClips.reduce((max, c) => Math.max(max, c.startTime + c.duration), 0),
             };
             setAudioClips(prev => [...prev, newClip]);
@@ -301,6 +329,14 @@ function App() {
               <span className="nav-badge">{audioClips.length + videoClips.length}</span>
             )}
           </button>
+
+          <button
+            className={`nav-item ${activeTab === "publish" ? "active" : ""}`}
+            onClick={() => setActiveTab("publish")}
+            title={t('app.publish')}
+          >
+            <span className="nav-icon"><IconUpload /></span>
+          </button>
         </nav>
 
         <div className="sidebar-footer">
@@ -352,7 +388,17 @@ function App() {
               videoClips={videoClips}
               onAddMedia={handleAddMedia}
               onDeleteClip={handleDeleteClip}
+              onMoveClip={handleMoveClip}
               projectPath={currentProject?.path}
+            />
+          )}
+
+          {activeTab === "publish" && (
+            <PublishPage
+              audioClips={audioClips}
+              videoClips={videoClips}
+              projectPath={currentProject?.path}
+              projectName={currentProject?.name}
             />
           )}
 

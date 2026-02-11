@@ -175,19 +175,29 @@
   background: #1a201e;
 }
 
+.track-content.drag-over {
+  background: rgba(232, 121, 36, 0.08);
+  outline: 2px dashed var(--accent-primary);
+  outline-offset: -2px;
+}
+
 .timeline-clip {
   position: absolute;
   top: 4px;
   bottom: 4px;
   border-radius: var(--radius-sm);
   padding: var(--spacing-xs) var(--spacing-sm);
-  cursor: pointer;
+  cursor: grab;
   transition: all var(--transition-fast);
   overflow: hidden;
   display: flex;
   flex-direction: column;
   justify-content: center;
   border: 1px solid transparent;
+}
+
+.timeline-clip:active {
+  cursor: grabbing;
 }
 
 .timeline-clip:hover {

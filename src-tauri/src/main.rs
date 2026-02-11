@@ -75,8 +75,8 @@ struct GeminiResponseContent {
 struct GeminiResponsePart {
     #[serde(default)]
     text: Option<String>,
-    #[serde(default)]
-    inline_data: Option<InlineData>,
+    #[serde(default, rename = "inline_data")]
+    _inline_data: Option<InlineData>,
 }
 
 // Structures pour Gemini Audio Generation
@@ -250,28 +250,61 @@ async fn generate_voice(text: String, api_key: String, output_path: String) -> R
     }
     
     if all_audio_data.is_empty() {
-        return Err("Aucune donnée audio dans la réponse Gemini".to_string());
+        return Err("No audio data in Gemini response".to_string());
     }
-    
-    // Créer le répertoire parent si nécessaire
+
+    // Create parent directory if needed
     if let Some(parent) = std::path::Path::new(&output_path).parent() {
         std::fs::create_dir_all(parent)
-            .map_err(|e| format!("Erreur création répertoire: {}", e))?;
+            .map_err(|e| format!("Error creating directory: {}", e))?;
     }
-    
-    // Déterminer l'extension appropriée (Gemini retourne généralement du WAV ou PCM)
-    // On sauvegarde en .wav si c'est du PCM
+
+    // Parse sample rate from mime_type (e.g. "audio/L16;rate=24000")
+    let sample_rate: u32 = candidates[0].content.parts.iter()
+        .filter_map(|p| p.inline_data.as_ref())
+        .find_map(|d| {
+            d.mime_type.split("rate=").nth(1)
+                .and_then(|r| r.trim().parse::<u32>().ok())
+        })
+        .unwrap_or(24000);
+
+    let channels: u16 = 1;
+    let bits_per_sample: u16 = 16;
+    let byte_rate = sample_rate * channels as u32 * bits_per_sample as u32 / 8;
+    let block_align = channels * bits_per_sample / 8;
+    let data_size = all_audio_data.len() as u32;
+
+    // Build WAV file with proper header
+    let mut wav_data: Vec<u8> = Vec::with_capacity(44 + all_audio_data.len());
+    // RIFF header
+    wav_data.extend_from_slice(b"RIFF");
+    wav_data.extend_from_slice(&(36 + data_size).to_le_bytes());
+    wav_data.extend_from_slice(b"WAVE");
+    // fmt sub-chunk
+    wav_data.extend_from_slice(b"fmt ");
+    wav_data.extend_from_slice(&16u32.to_le_bytes()); // PCM format chunk size
+    wav_data.extend_from_slice(&1u16.to_le_bytes());  // PCM format
+    wav_data.extend_from_slice(&channels.to_le_bytes());
+    wav_data.extend_from_slice(&sample_rate.to_le_bytes());
+    wav_data.extend_from_slice(&byte_rate.to_le_bytes());
+    wav_data.extend_from_slice(&block_align.to_le_bytes());
+    wav_data.extend_from_slice(&bits_per_sample.to_le_bytes());
+    // data sub-chunk
+    wav_data.extend_from_slice(b"data");
+    wav_data.extend_from_slice(&data_size.to_le_bytes());
+    wav_data.extend_from_slice(&all_audio_data);
+
+    // Save as .wav
     let final_output_path = if output_path.ends_with(".mp3") {
         output_path.replace(".mp3", ".wav")
     } else {
         output_path.clone()
     };
-    
-    // Sauvegarder le fichier audio
-    std::fs::write(&final_output_path, &all_audio_data)
-        .map_err(|e| format!("Erreur écriture fichier: {}", e))?;
-    
-    println!("Audio généré: {} ({} bytes)", final_output_path, all_audio_data.len());
+
+    std::fs::write(&final_output_path, &wav_data)
+        .map_err(|e| format!("Error writing file: {}", e))?;
+
+    println!("Audio generated: {} ({} bytes, {}Hz)", final_output_path, wav_data.len(), sample_rate);
     Ok(final_output_path)
 }
 
