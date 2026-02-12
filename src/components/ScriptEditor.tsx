@@ -1,8 +1,14 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, memo } from "react";
 import { useTranslation } from "react-i18next";
 import { marked } from "marked";
-import { safeInvoke, getTauriErrorMessage } from "../utils/tauri";
+import { safeInvoke, getTauriErrorMessage, loadAudioAsBlob } from "../utils/tauri";
+import { getStoredStylePrompt } from "./StyleEditor";
 import { getCurrentProject } from "../utils/project";
+import { useMediaDuration } from "../hooks/useMediaDuration";
+import type { AudioClip } from "../types";
+import RemotionPreview from "./RemotionPreview";
+import { useRemotionSync } from "../hooks/useRemotionSync";
+import type { PodcastCompositionProps } from "../remotion/PodcastComposition";
 import "./ScriptEditor.css";
 
 declare global {
@@ -12,6 +18,7 @@ declare global {
 }
 
 interface ScriptEditorProps {
+  audioClips: AudioClip[];
   onAudioGenerated?: (audioPath: string, duration: number) => void;
   onOpenSettings?: () => void;
 }
@@ -61,8 +68,9 @@ const IconSparkles = () => (
   </svg>
 );
 
-function ScriptEditor({ onAudioGenerated, onOpenSettings }: ScriptEditorProps) {
+function ScriptEditor({ audioClips, onAudioGenerated, onOpenSettings }: ScriptEditorProps) {
   const { t } = useTranslation();
+  const { probe } = useMediaDuration();
   const [script, setScript] = useState<string>("");
   const [url, setUrl] = useState<string>("");
   const [isGenerating, setIsGenerating] = useState<boolean>(false);
@@ -72,6 +80,60 @@ function ScriptEditor({ onAudioGenerated, onOpenSettings }: ScriptEditorProps) {
   const [lastSaved, setLastSaved] = useState<string>("");
   const [viewMode, setViewMode] = useState<ViewMode>("split");
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState<boolean>(false);
+  const [resolvedUrls, setResolvedUrls] = useState<Record<string, string>>({});
+
+  // Total audio duration
+  const totalDuration = useMemo(() => {
+    return Math.max(...audioClips.map(c => c.startTime + c.duration), 0);
+  }, [audioClips]);
+
+  // Remotion sync hook for audio playback
+  const {
+    playerRef,
+    currentTime,
+    isPlaying,
+    durationInFrames,
+    handlePlayPause,
+    handleSeek,
+  } = useRemotionSync({ totalDuration, volume: 1 });
+
+  // Resolve audio clip paths to data URIs via Rust backend
+  useEffect(() => {
+    const paths = audioClips.map(c => c.path);
+    const uniquePaths = [...new Set(paths)];
+    let cancelled = false;
+    Promise.all(
+      uniquePaths.map(async (p) => {
+        try {
+          const dataUri = await loadAudioAsBlob(p);
+          return [p, dataUri] as const;
+        } catch {
+          return [p, ""] as const;
+        }
+      })
+    ).then((entries) => {
+      if (!cancelled) setResolvedUrls(Object.fromEntries(entries));
+    });
+    return () => { cancelled = true; };
+  }, [audioClips]);
+
+  // Remotion composition props (audio only)
+  const compositionProps: PodcastCompositionProps = useMemo(() => ({
+    audioClips,
+    videoClips: [],
+    resolvedUrls,
+  }), [audioClips, resolvedUrls]);
+
+  /** Format seconds as m:ss */
+  const formatTime = (seconds: number): string => {
+    const mins = Math.floor(seconds / 60);
+    const secs = Math.floor(seconds % 60);
+    return `${mins}:${secs.toString().padStart(2, "0")}`;
+  };
+
+  const handleSeekInput = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    handleSeek(parseFloat(e.target.value));
+  }, [handleSeek]);
 
   useEffect(() => {
     loadScript();
@@ -159,9 +221,11 @@ function ScriptEditor({ onAudioGenerated, onOpenSettings }: ScriptEditorProps) {
     setSuccess("");
 
     try {
+      const stylePrompt = getStoredStylePrompt();
       let generatedScript = await safeInvoke<string>("generate_podcast_script", {
         url: url.trim(),
         apiKey,
+        stylePrompt,
       });
 
       generatedScript = generatedScript.replace(/^```(?:markdown|md)?\s*\n?/, "").replace(/\n?```\s*$/, "");
@@ -201,13 +265,25 @@ function ScriptEditor({ onAudioGenerated, onOpenSettings }: ScriptEditorProps) {
     setSuccess("");
 
     try {
-      const { mkdir } = await import("@tauri-apps/plugin-fs");
+      const { mkdir, readDir, remove } = await import("@tauri-apps/plugin-fs");
 
-      const audioDir = `${project.path}/audio`;
+      const audioDir = `${project.path}/audios`;
       try {
         await mkdir(audioDir, { recursive: true });
       } catch {
         // Directory already exists
+      }
+
+      // Delete previous generated podcast audio files
+      try {
+        const entries = await readDir(audioDir);
+        for (const entry of entries) {
+          if (entry.isFile && entry.name?.startsWith("podcast_") && entry.name.endsWith(".wav")) {
+            await remove(`${audioDir}/${entry.name}`);
+          }
+        }
+      } catch {
+        // Directory empty or read error — continue
       }
 
       const timestamp = Date.now();
@@ -221,11 +297,10 @@ function ScriptEditor({ onAudioGenerated, onOpenSettings }: ScriptEditorProps) {
 
       setSuccess(t('script.audioGenerated', { path: resultPath }));
 
-      const wordCount = script.split(/\s+/).length;
-      const estimatedDuration = (wordCount / 150) * 60;
+      const { duration: realDuration } = await probe(resultPath);
 
       if (onAudioGenerated) {
-        onAudioGenerated(resultPath, estimatedDuration);
+        onAudioGenerated(resultPath, realDuration);
       }
     } catch (err) {
       setError(getTauriErrorMessage(err));
@@ -243,6 +318,7 @@ function ScriptEditor({ onAudioGenerated, onOpenSettings }: ScriptEditorProps) {
       {/* Toolbar */}
       <div className="editor-toolbar">
         <div className="toolbar-left">
+          <h3 className="toolbar-title">{t('app.script')}</h3>
           <div className="url-input-group">
             <input
               type="url"
@@ -331,6 +407,47 @@ function ScriptEditor({ onAudioGenerated, onOpenSettings }: ScriptEditorProps) {
       {error && <div className="message error">{error}</div>}
       {success && <div className="message success">{success}</div>}
 
+      {/* Hidden Remotion Player for audio playback */}
+      {audioClips.length > 0 && totalDuration > 0 && (
+        <div style={{ position: "fixed", left: -9999, top: -9999, width: 1, height: 1, opacity: 0, pointerEvents: "none" }}>
+          <RemotionPreview
+            playerRef={playerRef}
+            compositionProps={compositionProps}
+            durationInFrames={durationInFrames}
+          />
+        </div>
+      )}
+
+      {/* Audio Player */}
+      {audioClips.length > 0 && (
+        <div className="script-audio-player">
+          <button
+            className="audio-play-btn"
+            onClick={handlePlayPause}
+            disabled={audioClips.length === 0}
+          >
+            {isPlaying ? "\u23F8" : "\u25B6"}
+          </button>
+          <div className="audio-progress-wrapper">
+            <input
+              type="range"
+              className="audio-progress"
+              min="0"
+              max={totalDuration || 0}
+              step="0.1"
+              value={currentTime}
+              onChange={handleSeekInput}
+            />
+          </div>
+          <span className="audio-time">
+            {formatTime(currentTime)} / {formatTime(totalDuration)}
+          </span>
+          <span className="audio-name">
+            {audioClips[0]?.name}
+          </span>
+        </div>
+      )}
+
       {/* Editor Area */}
       <div className={`editor-area mode-${viewMode}`}>
         {viewMode !== "preview" && (
@@ -381,4 +498,4 @@ function ScriptEditor({ onAudioGenerated, onOpenSettings }: ScriptEditorProps) {
   );
 }
 
-export default ScriptEditor;
+export default memo(ScriptEditor);

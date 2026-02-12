@@ -1,12 +1,14 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef, memo } from "react";
 import { useTranslation } from "react-i18next";
 import "./ScenesPage.css";
-import { safeInvoke, getTauriErrorMessage, convertToAssetUrl } from "../utils/tauri";
-import type { AudioClip, VideoScene } from "../types";
+import { safeInvoke, getTauriErrorMessage, loadAudioAsBlob, loadFileAsDataUri } from "../utils/tauri";
+import type { AudioClip, VideoClip, VideoScene } from "../types";
 import RemotionPreview from "./RemotionPreview";
 import { useRemotionSync } from "../hooks/useRemotionSync";
 import type { PodcastCompositionProps } from "../remotion/PodcastComposition";
+import { getStoredPexelsApiKey } from "./Settings";
 
+/** Sparkles icon for the Generate button */
 const IconSparkles = () => (
   <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" stroke="none">
     <path d="M9.813 3.563a.5.5 0 0 1 .874 0l1.121 2.012a.5.5 0 0 0 .262.233l2.151.905a.5.5 0 0 1 0 .914l-2.151.905a.5.5 0 0 0-.262.233L10.687 10.777a.5.5 0 0 1-.874 0L8.692 8.765a.5.5 0 0 0-.262-.233l-2.151-.905a.5.5 0 0 1 0-.914l2.151-.905a.5.5 0 0 0 .262-.233L9.813 3.563z" />
@@ -15,19 +17,49 @@ const IconSparkles = () => (
   </svg>
 );
 
+/** Download icon for the Feed button */
+const IconDownload = () => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+    <polyline points="7 10 12 15 17 10" />
+    <line x1="12" y1="15" x2="12" y2="3" />
+  </svg>
+);
+
+/** Film icon for the Produce button */
+const IconFilm = () => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18" />
+    <line x1="7" y1="2" x2="7" y2="22" /><line x1="17" y1="2" x2="17" y2="22" />
+    <line x1="2" y1="12" x2="22" y2="12" />
+    <line x1="2" y1="7" x2="7" y2="7" /><line x1="2" y1="17" x2="7" y2="17" />
+    <line x1="17" y1="7" x2="22" y2="7" /><line x1="17" y1="17" x2="22" y2="17" />
+  </svg>
+);
+
 interface ScenesPageProps {
   audioClips: AudioClip[];
   projectPath?: string;
   onOpenSettings?: () => void;
+  onProduceToTimeline?: (clips: VideoClip[]) => void;
 }
 
-function ScenesPage({ audioClips, projectPath, onOpenSettings }: ScenesPageProps) {
+function ScenesPage({ audioClips, projectPath, onOpenSettings, onProduceToTimeline }: ScenesPageProps) {
   const { t } = useTranslation();
   const [scenes, setScenes] = useState<VideoScene[]>([]);
   const [script, setScript] = useState<string>("");
   const [isGenerating, setIsGenerating] = useState<boolean>(false);
   const [error, setError] = useState<string>("");
   const [resolvedUrls, setResolvedUrls] = useState<Record<string, string>>({});
+  const [editingSceneId, setEditingSceneId] = useState<string | null>(null);
+  const [editingText, setEditingText] = useState<string>("");
+  const [isProducing, setIsProducing] = useState<boolean>(false);
+  const [produceProgress, setProduceProgress] = useState<number>(0);
+  const [produceTotal, setProduceTotal] = useState<number>(0);
+  const [thumbnailUrls, setThumbnailUrls] = useState<Record<string, string>>({});
+  const [downloadingSceneId, setDownloadingSceneId] = useState<string | null>(null);
+  const [videoModalUrl, setVideoModalUrl] = useState<string | null>(null);
+  const [maxSceneDuration, setMaxSceneDuration] = useState<number>(10);
 
   // Total audio duration
   const totalDuration = useMemo(() => {
@@ -47,7 +79,7 @@ function ScenesPage({ audioClips, projectPath, onOpenSettings }: ScenesPageProps
     handleSeek,
   } = useRemotionSync({ totalDuration, volume: 1 });
 
-  // Resolve audio clip paths to Tauri asset URLs
+  // Resolve audio clip paths to data URIs via Rust backend
   useEffect(() => {
     const paths = audioClips.map(c => c.path);
     const uniquePaths = [...new Set(paths)];
@@ -55,8 +87,13 @@ function ScenesPage({ audioClips, projectPath, onOpenSettings }: ScenesPageProps
     let cancelled = false;
     Promise.all(
       uniquePaths.map(async (p) => {
-        const url = await convertToAssetUrl(p);
-        return [p, url] as const;
+        try {
+          const dataUri = await loadAudioAsBlob(p);
+          return [p, dataUri] as const;
+        } catch (err) {
+          console.error("Failed to load audio:", p, err);
+          return [p, ""] as const;
+        }
       })
     ).then((entries) => {
       if (!cancelled) {
@@ -100,6 +137,17 @@ function ScenesPage({ audioClips, projectPath, onOpenSettings }: ScenesPageProps
     loadScenes();
   }, [projectPath]);
 
+  // Load a single thumbnail on demand (called when card becomes visible)
+  const loadThumbnail = useCallback(async (sceneId: string, thumbnailPath: string) => {
+    if (thumbnailUrls[sceneId]) return;
+    try {
+      const dataUri = await loadFileAsDataUri(thumbnailPath);
+      setThumbnailUrls((prev) => ({ ...prev, [sceneId]: dataUri }));
+    } catch {
+      setThumbnailUrls((prev) => ({ ...prev, [sceneId]: "" }));
+    }
+  }, [thumbnailUrls]);
+
   const formatTime = (seconds: number): string => {
     const mins = Math.floor(seconds / 60);
     const secs = Math.floor(seconds % 60);
@@ -131,20 +179,35 @@ function ScenesPage({ audioClips, projectPath, onOpenSettings }: ScenesPageProps
       const result = await safeInvoke<string>("generate_video_scenes", {
         script: script.trim(),
         apiKey,
+        totalDuration,
+        maxSceneDuration,
       });
 
       const parsed = JSON.parse(result) as Array<{
         description: string;
         duration: number;
         scriptExcerpt: string;
+        searchKeywords?: string;
       }>;
+
+      // Scale durations so their sum matches totalDuration
+      const rawSum = parsed.reduce((sum, s) => sum + Math.max(1, s.duration), 0);
+      const scale = totalDuration > 0 && rawSum > 0 ? totalDuration / rawSum : 1;
 
       const newScenes: VideoScene[] = parsed.map((scene, index) => ({
         id: `scene_${Date.now()}_${index}`,
         description: scene.description,
-        duration: Math.min(20, Math.max(5, scene.duration)),
+        duration: Math.round(Math.max(1, scene.duration) * scale),
         scriptExcerpt: scene.scriptExcerpt,
+        searchKeywords: scene.searchKeywords,
       }));
+
+      // Adjust last scene to absorb rounding errors
+      if (newScenes.length > 0 && totalDuration > 0) {
+        const currentSum = newScenes.reduce((sum, s) => sum + s.duration, 0);
+        const diff = Math.round(totalDuration) - currentSum;
+        newScenes[newScenes.length - 1].duration = Math.max(1, newScenes[newScenes.length - 1].duration + diff);
+      }
 
       setScenes(newScenes);
 
@@ -175,11 +238,239 @@ function ScenesPage({ audioClips, projectPath, onOpenSettings }: ScenesPageProps
 
   const totalScenesDuration = scenes.reduce((sum, s) => sum + s.duration, 0);
 
+  // Compute scene timings using actual scene durations (no scaling)
+  const sceneTimings = useMemo(() => {
+    if (scenes.length === 0) return [];
+    let cumulative = 0;
+    return scenes.map((scene) => {
+      const start = cumulative;
+      cumulative += scene.duration;
+      return { start, end: cumulative };
+    });
+  }, [scenes]);
+
+  // Find active scene index based on currentTime
+  const activeSceneIndex = useMemo(() => {
+    if (!isPlaying && currentTime === 0) return -1;
+    for (let i = sceneTimings.length - 1; i >= 0; i--) {
+      if (currentTime >= sceneTimings[i].start) return i;
+    }
+    return -1;
+  }, [currentTime, sceneTimings, isPlaying]);
+
+  // IntersectionObserver for lazy-loading thumbnails
+  const observerRef = useRef<IntersectionObserver | null>(null);
+  useEffect(() => {
+    observerRef.current = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            const el = entry.target as HTMLElement;
+            const sceneId = el.dataset.sceneId;
+            const thumbPath = el.dataset.thumbPath;
+            if (sceneId && thumbPath) {
+              loadThumbnail(sceneId, thumbPath);
+              observerRef.current?.unobserve(el);
+            }
+          }
+        });
+      },
+      { rootMargin: "200px" }
+    );
+    return () => { observerRef.current?.disconnect(); };
+  }, [loadThumbnail]);
+
+  // Ref callback to observe scene cards with thumbnails
+  const observeCard = useCallback((el: HTMLDivElement | null) => {
+    if (el && observerRef.current) {
+      observerRef.current.observe(el);
+    }
+  }, []);
+
+  // Auto-scroll active scene into view
+  const activeCardRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (activeSceneIndex >= 0 && activeCardRef.current) {
+      activeCardRef.current.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    }
+  }, [activeSceneIndex]);
+
+  // Click on a scene card to seek to its start time
+  const handleSceneClick = useCallback((index: number) => {
+    if (sceneTimings[index]) {
+      handleSeek(sceneTimings[index].start);
+    }
+  }, [sceneTimings, handleSeek]);
+
+  // Start editing a scene description
+  const handleStartEdit = useCallback((e: React.MouseEvent, scene: VideoScene) => {
+    e.stopPropagation();
+    setEditingSceneId(scene.id);
+    setEditingText(scene.description);
+  }, []);
+
+  // Save edited description
+  const handleSaveEdit = useCallback(async () => {
+    if (!editingSceneId) return;
+    const updatedScenes = scenes.map((s) =>
+      s.id === editingSceneId ? { ...s, description: editingText } : s
+    );
+    setScenes(updatedScenes);
+    setEditingSceneId(null);
+
+    if (projectPath) {
+      try {
+        const { writeTextFile } = await import("@tauri-apps/plugin-fs");
+        await writeTextFile(
+          `${projectPath}/scenes.json`,
+          JSON.stringify(updatedScenes, null, 2)
+        );
+      } catch (e) {
+        console.error("Scene save error:", e);
+      }
+    }
+  }, [editingSceneId, editingText, scenes, projectPath]);
+
+  // Cancel editing
+  const handleCancelEdit = useCallback(() => {
+    setEditingSceneId(null);
+  }, []);
+
+  /** Download Pexels videos for all scenes sequentially */
+  const handleFeed = useCallback(async () => {
+    const pexelsKey = getStoredPexelsApiKey();
+    if (!pexelsKey) {
+      setError(t('scenes.errorNoPexelsKey'));
+      if (onOpenSettings) onOpenSettings();
+      return;
+    }
+    if (!projectPath || scenes.length === 0) return;
+
+    setIsProducing(true);
+    setError("");
+    setProduceTotal(scenes.length);
+
+    const updatedScenes = [...scenes];
+    for (let i = 0; i < updatedScenes.length; i++) {
+      setProduceProgress(i + 1);
+      setDownloadingSceneId(updatedScenes[i].id);
+
+      // Skip if video already exists
+      if (updatedScenes[i].videoPath) continue;
+
+      try {
+        const videoPath = await safeInvoke<string>("search_and_download_pexels_video", {
+          apiKey: pexelsKey,
+          query: updatedScenes[i].searchKeywords || updatedScenes[i].description,
+          minDuration: updatedScenes[i].duration,
+          projectPath,
+          sceneIndex: i + 1,
+        });
+        const thumbPath = `${projectPath}/cache/scene_${String(i + 1).padStart(3, "0")}.jpg`;
+        let thumbnailPath: string | undefined;
+        try {
+          thumbnailPath = await safeInvoke<string>("generate_video_thumbnail", {
+            videoPath,
+            thumbnailPath: thumbPath,
+          });
+        } catch (thumbErr) {
+          console.error(`Thumbnail generation failed for scene ${i + 1}:`, thumbErr);
+        }
+        // Generate low-res proxy for preview
+        let proxyPath: string | undefined;
+        try {
+          const proxyFile = `${projectPath}/cache/proxy_${String(i + 1).padStart(3, "0")}.mp4`;
+          proxyPath = await safeInvoke<string>("generate_video_proxy", {
+            videoPath,
+            proxyPath: proxyFile,
+          });
+        } catch (proxyErr) {
+          console.error(`Proxy generation failed for scene ${i + 1}:`, proxyErr);
+        }
+        updatedScenes[i] = { ...updatedScenes[i], videoPath, thumbnailPath, proxyPath };
+      } catch (err) {
+        console.error(`Error downloading video for scene ${i + 1}:`, err);
+      }
+    }
+
+    setScenes(updatedScenes);
+    setDownloadingSceneId(null);
+
+    // Persist updated scenes
+    try {
+      const { writeTextFile } = await import("@tauri-apps/plugin-fs");
+      await writeTextFile(
+        `${projectPath}/scenes.json`,
+        JSON.stringify(updatedScenes, null, 2)
+      );
+    } catch (e) {
+      console.error("Scene save error:", e);
+    }
+
+    setIsProducing(false);
+  }, [scenes, projectPath, t, onOpenSettings]);
+
+  /** Assemble scene videos as VideoClips on the Edit timeline */
+  const handleProduceToTimeline = useCallback(() => {
+    const scenesWithVideo = scenes.filter(s => s.videoPath);
+    if (scenesWithVideo.length === 0 || !onProduceToTimeline) return;
+
+    let offset = 0;
+    const clips: VideoClip[] = scenesWithVideo.map((scene, index) => {
+      const clip: VideoClip = {
+        id: `video_${Date.now()}_${index}`,
+        name: scene.videoPath!.split("/").pop() || `Scene ${index + 1}`,
+        path: scene.videoPath!,
+        duration: scene.duration,
+        startTime: offset,
+        thumbnail: scene.thumbnailPath,
+        proxyPath: scene.proxyPath,
+      };
+      offset += scene.duration;
+      return clip;
+    });
+
+    onProduceToTimeline(clips);
+  }, [scenes, onProduceToTimeline]);
+
+  /** Remove video and thumbnail from a scene */
+  const handleDeleteVideo = useCallback(async (e: React.MouseEvent, sceneId: string) => {
+    e.stopPropagation();
+    const updatedScenes = scenes.map((s) =>
+      s.id === sceneId ? { ...s, videoPath: undefined, thumbnailPath: undefined } : s
+    );
+    setScenes(updatedScenes);
+
+    if (projectPath) {
+      try {
+        const { writeTextFile } = await import("@tauri-apps/plugin-fs");
+        await writeTextFile(
+          `${projectPath}/scenes.json`,
+          JSON.stringify(updatedScenes, null, 2)
+        );
+      } catch (e) {
+        console.error("Scene save error:", e);
+      }
+    }
+  }, [scenes, projectPath]);
+
+  /** Open the video modal for a scene */
+  const handleOpenVideoModal = useCallback(async (e: React.MouseEvent, scene: VideoScene) => {
+    e.stopPropagation();
+    if (!scene.videoPath) return;
+    try {
+      const dataUri = await loadFileAsDataUri(scene.videoPath);
+      setVideoModalUrl(dataUri);
+    } catch {
+      console.error("Failed to load video file");
+    }
+  }, []);
+
   return (
     <div className="scenes-page">
       {/* Hidden Remotion Player for audio playback */}
       {audioClips.length > 0 && totalDuration > 0 && (
-        <div style={{ position: "absolute", width: 0, height: 0, overflow: "hidden" }}>
+        <div style={{ position: "fixed", left: -9999, top: -9999, width: 1, height: 1, opacity: 0, pointerEvents: "none" }}>
           <RemotionPreview
             playerRef={playerRef}
             compositionProps={compositionProps}
@@ -191,30 +482,73 @@ function ScenesPage({ audioClips, projectPath, onOpenSettings }: ScenesPageProps
       {/* Header */}
       <div className="scenes-header">
         <div className="scenes-header-left">
-          <h2>{t('scenes.title')}</h2>
+          <h2>{t('app.scenes')}</h2>
           {scenes.length > 0 && (
             <span className="scenes-count">
               {t('scenes.count', { count: scenes.length })} · {formatTime(totalScenesDuration)}
             </span>
           )}
         </div>
-        <button
-          className="btn btn-primary"
-          onClick={handleGenerateScenes}
-          disabled={isGenerating || !script.trim()}
-        >
-          {isGenerating ? (
-            <>
-              <span className="spinner"></span>
-              {t('scenes.analyzing')}
-            </>
-          ) : (
-            <>
-              <IconSparkles />
-              {t('scenes.generateScenes')}
-            </>
+        <div className="scenes-header-actions">
+          <div className="scenes-max-duration">
+            <label htmlFor="max-scene-duration">{t('scenes.maxDuration')}</label>
+            <input
+              id="max-scene-duration"
+              type="number"
+              min={4}
+              max={20}
+              value={maxSceneDuration}
+              onChange={(e) => setMaxSceneDuration(Math.min(20, Math.max(4, parseInt(e.target.value) || 10)))}
+              className="scenes-max-duration-input"
+            />
+            <span className="scenes-max-duration-unit">s</span>
+          </div>
+          <button
+            className="btn btn-primary"
+            onClick={handleGenerateScenes}
+            disabled={isGenerating || !script.trim()}
+          >
+            {isGenerating ? (
+              <>
+                <span className="spinner"></span>
+                {t('scenes.analyzing')}
+              </>
+            ) : (
+              <>
+                <IconSparkles />
+                {t('scenes.generateScenes')}
+              </>
+            )}
+          </button>
+          {scenes.length > 0 && (
+            <button
+              className="btn btn-success"
+              onClick={handleFeed}
+              disabled={isProducing}
+            >
+              {isProducing ? (
+                <>
+                  <span className="spinner"></span>
+                  {t('scenes.feeding', { current: produceProgress, total: produceTotal })}
+                </>
+              ) : (
+                <>
+                  <IconDownload />
+                  {t('scenes.feed')}
+                </>
+              )}
+            </button>
           )}
-        </button>
+          {scenes.some(s => s.videoPath) && (
+            <button
+              className="btn btn-primary"
+              onClick={handleProduceToTimeline}
+            >
+              <IconFilm />
+              {t('scenes.produce')}
+            </button>
+          )}
+        </div>
       </div>
 
       {error && <div className="scenes-error">{error}</div>}
@@ -269,21 +603,120 @@ function ScenesPage({ audioClips, projectPath, onOpenSettings }: ScenesPageProps
           </div>
         ) : (
           <div className="scenes-grid">
-            {scenes.map((scene, index) => (
-              <div key={scene.id} className="scene-card">
-                <div className="scene-card-header">
-                  <span className="scene-number">{t('scenes.sceneNumber', { number: index + 1 })}</span>
-                  <span className="scene-duration">{scene.duration}s</span>
+            {scenes.map((scene, index) => {
+              const isActive = index === activeSceneIndex;
+              const isPast = activeSceneIndex >= 0 && index < activeSceneIndex;
+              const timing = sceneTimings[index];
+              const progress = isActive && timing
+                ? Math.min(1, Math.max(0, (currentTime - timing.start) / (timing.end - timing.start)))
+                : 0;
+              const hasThumbnail = !!scene.thumbnailPath && !!thumbnailUrls[scene.id];
+              const isDownloading = downloadingSceneId === scene.id;
+
+              // Whether this card still needs its thumbnail loaded
+              const needsLazyLoad = !!scene.thumbnailPath && !thumbnailUrls[scene.id];
+
+              return (
+                <div
+                  key={scene.id}
+                  ref={(el) => {
+                    if (isActive) (activeCardRef as React.MutableRefObject<HTMLDivElement | null>).current = el;
+                    if (needsLazyLoad) observeCard(el);
+                  }}
+                  data-scene-id={scene.id}
+                  data-thumb-path={scene.thumbnailPath || undefined}
+                  className={`scene-card${isActive ? " scene-card--active" : ""}${isPast ? " scene-card--past" : ""}`}
+                  onClick={() => handleSceneClick(index)}
+                >
+                  {isActive && (
+                    <div className="scene-progress-bar">
+                      <div className="scene-progress-fill" style={{ width: `${progress * 100}%` }} />
+                    </div>
+                  )}
+
+                  {/* Thumbnail preview or downloading overlay */}
+                  {hasThumbnail ? (
+                    <div className="scene-video-container" onClick={(e) => handleOpenVideoModal(e, scene)}>
+                      <img
+                        className="scene-video-preview"
+                        src={thumbnailUrls[scene.id]}
+                        alt={scene.description}
+                      />
+                      <div className="scene-video-play-btn">&#9654;</div>
+                      <div className="scene-video-overlay">
+                        <button
+                          className="scene-video-action"
+                          title={t('scenes.deleteVideo')}
+                          onClick={(e) => handleDeleteVideo(e, scene.id)}
+                        >
+                          ✕
+                        </button>
+                        <button
+                          className="scene-video-action"
+                          title={t('scenes.editDescription')}
+                          onClick={(e) => handleStartEdit(e, scene)}
+                        >
+                          ✎
+                        </button>
+                      </div>
+                    </div>
+                  ) : isDownloading ? (
+                    <div className="scene-video-container">
+                      <div className="scene-producing-overlay">
+                        <span className="spinner"></span>
+                        <span>{t('scenes.downloading')}</span>
+                      </div>
+                    </div>
+                  ) : null}
+
+                  <div className="scene-card-header">
+                    <span className="scene-number">{t('scenes.sceneNumber', { number: index + 1 })}</span>
+                    <span className="scene-duration">{scene.duration}s</span>
+                  </div>
+                  {editingSceneId === scene.id ? (
+                    <textarea
+                      className="scene-description-edit"
+                      value={editingText}
+                      onChange={(e) => setEditingText(e.target.value)}
+                      onBlur={handleSaveEdit}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSaveEdit(); }
+                        if (e.key === "Escape") handleCancelEdit();
+                      }}
+                      onClick={(e) => e.stopPropagation()}
+                      autoFocus
+                    />
+                  ) : (
+                    <p className="scene-description" onClick={(e) => handleStartEdit(e, scene)}>
+                      {scene.description}
+                    </p>
+                  )}
+                  {scene.searchKeywords && (
+                    <p className="scene-keywords">{scene.searchKeywords}</p>
+                  )}
+                  <p className="scene-excerpt">{"\u00AB"} {scene.scriptExcerpt} {"\u00BB"}</p>
                 </div>
-                <p className="scene-description">{scene.description}</p>
-                <p className="scene-excerpt">{"\u00AB"} {scene.scriptExcerpt} {"\u00BB"}</p>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>
+      {/* Video playback modal */}
+      {videoModalUrl && (
+        <div className="scene-modal-backdrop" onClick={() => setVideoModalUrl(null)}>
+          <div className="scene-modal" onClick={(e) => e.stopPropagation()}>
+            <video
+              className="scene-modal-video"
+              src={videoModalUrl}
+              controls
+              autoPlay
+            />
+            <button className="scene-modal-close" onClick={() => setVideoModalUrl(null)}>✕</button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
-export default ScenesPage;
+export default memo(ScenesPage);

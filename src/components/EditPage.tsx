@@ -1,11 +1,11 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, memo } from "react";
 import { useTranslation } from "react-i18next";
 import "./EditPage.css";
 import type { AudioClip, VideoClip } from "../types";
 import Timeline from "./Timeline";
 import RemotionPreview from "./RemotionPreview";
 import { useRemotionSync } from "../hooks/useRemotionSync";
-import { convertToAssetUrl } from "../utils/tauri";
+import { loadAudioAsBlob, loadFileAsDataUri, convertToAssetUrl } from "../utils/tauri";
 import { formatTimecode } from "../remotion/constants";
 import type { PodcastCompositionProps } from "../remotion/PodcastComposition";
 
@@ -48,28 +48,82 @@ function EditPage({ audioClips, videoClips, onAddMedia, onDeleteClip, onMoveClip
     handleGoToEnd,
   } = useRemotionSync({ totalDuration, volume });
 
-  // Resolve all clip paths to Tauri asset URLs
+  // Phase 1: Thumbnails — instant via Tauri asset protocol (no file read, no IPC)
   useEffect(() => {
-    const allPaths = [
-      ...audioClips.map(c => c.path),
-      ...videoClips.map(c => c.path),
-    ];
-    const uniquePaths = [...new Set(allPaths)];
+    const thumbPaths = [...new Set(videoClips.map(c => c.thumbnail).filter(Boolean) as string[])];
+    if (thumbPaths.length === 0) return;
 
     let cancelled = false;
     Promise.all(
-      uniquePaths.map(async (p) => {
-        const url = await convertToAssetUrl(p);
-        return [p, url] as const;
+      thumbPaths.map(async (p) => {
+        try {
+          const url = await convertToAssetUrl(p);
+          return [p, url] as const;
+        } catch {
+          return [p, ""] as const;
+        }
       })
     ).then((entries) => {
       if (!cancelled) {
-        setResolvedUrls(Object.fromEntries(entries));
+        setResolvedUrls(prev => ({ ...prev, ...Object.fromEntries(entries) }));
       }
     });
-
     return () => { cancelled = true; };
-  }, [audioClips, videoClips]);
+  }, [videoClips]);
+
+  // Phase 2: Audio — data URI via Rust (needed for Remotion playback)
+  useEffect(() => {
+    const audioPaths = [...new Set(audioClips.map(c => c.path))];
+    if (audioPaths.length === 0) return;
+
+    let cancelled = false;
+    Promise.all(
+      audioPaths.map(async (p) => {
+        try {
+          const dataUri = await loadAudioAsBlob(p);
+          return [p, dataUri] as const;
+        } catch {
+          return [p, ""] as const;
+        }
+      })
+    ).then((entries) => {
+      if (!cancelled) {
+        setResolvedUrls(prev => ({ ...prev, ...Object.fromEntries(entries) }));
+      }
+    });
+    return () => { cancelled = true; };
+  }, [audioClips]);
+
+  // Phase 3: Video proxies — data URI via Rust (deferred, heaviest)
+  useEffect(() => {
+    const videoPaths = [...new Set(videoClips.map(c => c.path))];
+    if (videoPaths.length === 0) return;
+
+    const proxyMap = new Map<string, string>();
+    for (const c of videoClips) {
+      if (c.proxyPath && !proxyMap.has(c.path)) {
+        proxyMap.set(c.path, c.proxyPath);
+      }
+    }
+
+    let cancelled = false;
+    Promise.all(
+      videoPaths.map(async (p) => {
+        const fileToLoad = proxyMap.get(p) || p;
+        try {
+          const dataUri = await loadFileAsDataUri(fileToLoad);
+          return [p, dataUri] as const;
+        } catch {
+          return [p, ""] as const;
+        }
+      })
+    ).then((entries) => {
+      if (!cancelled) {
+        setResolvedUrls(prev => ({ ...prev, ...Object.fromEntries(entries) }));
+      }
+    });
+    return () => { cancelled = true; };
+  }, [videoClips]);
 
   // Build composition props for Remotion
   const compositionProps: PodcastCompositionProps = useMemo(() => ({
@@ -110,6 +164,11 @@ function EditPage({ audioClips, videoClips, onAddMedia, onDeleteClip, onMoveClip
 
   return (
     <div className="edit-page">
+      {/* Page Header */}
+      <div className="edit-header">
+        <h2>{t('app.edit')}</h2>
+      </div>
+
       {/* Top Section: Media Browser + Preview */}
       <div className="edit-top">
         {/* Media Browser Panel */}
@@ -144,8 +203,8 @@ function EditPage({ audioClips, videoClips, onAddMedia, onDeleteClip, onMoveClip
                     onDoubleClick={() => handlePlayClip(clip)}
                   >
                     <div className="media-thumbnail video-thumb">
-                      {clip.thumbnail ? (
-                        <img src={clip.thumbnail} alt={clip.name} />
+                      {clip.thumbnail && resolvedUrls[clip.thumbnail] ? (
+                        <img src={resolvedUrls[clip.thumbnail]} alt={clip.name} />
                       ) : (
                         <span>V</span>
                       )}
@@ -298,6 +357,8 @@ function EditPage({ audioClips, videoClips, onAddMedia, onDeleteClip, onMoveClip
         <Timeline
           audioClips={audioClips}
           videoClips={videoClips}
+          resolvedUrls={resolvedUrls}
+          selectedClipId={selectedClip?.id ?? null}
           onClipSelect={handleClipSelect}
           onPlayClip={handlePlayClip}
           onMoveClip={onMoveClip}
@@ -310,4 +371,4 @@ function EditPage({ audioClips, videoClips, onAddMedia, onDeleteClip, onMoveClip
   );
 }
 
-export default EditPage;
+export default memo(EditPage);

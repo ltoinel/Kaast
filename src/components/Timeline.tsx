@@ -8,6 +8,8 @@ export type { AudioClip, VideoClip };
 interface TimelineProps {
   audioClips?: AudioClip[];
   videoClips?: VideoClip[];
+  resolvedUrls?: Record<string, string>;
+  selectedClipId?: string | null;
   onClipSelect?: (clipId: string, type: "audio" | "video") => void;
   onPlayClip?: (clip: AudioClip | VideoClip) => void;
   onMoveClip?: (clipId: string, type: "audio" | "video", newStartTime: number) => void;
@@ -19,6 +21,8 @@ interface TimelineProps {
 function Timeline({
   audioClips = [],
   videoClips = [],
+  resolvedUrls = {},
+  selectedClipId: externalSelectedClip,
   onClipSelect,
   onPlayClip,
   onMoveClip,
@@ -27,13 +31,20 @@ function Timeline({
   onSeek
 }: TimelineProps) {
   const { t } = useTranslation();
-  const [selectedClip, setSelectedClip] = useState<string | null>(null);
+  const [internalSelectedClip, setInternalSelectedClip] = useState<string | null>(null);
+  const selectedClip = externalSelectedClip !== undefined && externalSelectedClip !== null
+    ? externalSelectedClip
+    : internalSelectedClip;
   const [zoom, setZoom] = useState<number>(50);
-  const [scrollX, setScrollX] = useState<number>(0);
   const [internalIsPlaying, setInternalIsPlaying] = useState<boolean>(false);
   const [internalCurrentTime, setInternalCurrentTime] = useState<number>(0);
   const [dragOverTrack, setDragOverTrack] = useState<"audio" | "video" | null>(null);
+  const [dragSnapX, setDragSnapX] = useState<number | null>(null);
+  const [isScrubbing, setIsScrubbing] = useState(false);
+  const [scrubTime, setScrubTime] = useState(0);
+  const dragOffsetRef = useRef<number>(0);
   const timelineRef = useRef<HTMLDivElement>(null);
+  const rulerRef = useRef<HTMLDivElement>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
   const isPlaying = externalIsPlaying !== undefined ? externalIsPlaying : internalIsPlaying;
@@ -45,14 +56,20 @@ function Timeline({
     60
   );
 
+  /** Snap a time value to the nearest grid step (1 second per zoom pixel) */
+  const snapToGrid = useCallback((time: number): number => {
+    const step = Math.max(1, Math.round(zoom / 10));
+    return Math.round(time / step) * step;
+  }, [zoom]);
+
   const timeMarkers = useMemo(() => {
     const markers: number[] = [];
-    const interval = zoom >= 100 ? 5 : zoom >= 50 ? 10 : 30;
+    const interval = 10;
     for (let i = 0; i <= totalDuration; i += interval) {
       markers.push(i);
     }
     return markers;
-  }, [zoom, totalDuration]);
+  }, [totalDuration]);
 
   const waveformHeights = useMemo(() => {
     const heights: Record<string, number[]> = {};
@@ -73,7 +90,7 @@ function Timeline({
   };
 
   const handleClipClick = (clipId: string, type: "audio" | "video") => {
-    setSelectedClip(clipId);
+    setInternalSelectedClip(clipId);
     if (onClipSelect) {
       onClipSelect(clipId, type);
     }
@@ -99,46 +116,84 @@ function Timeline({
     }
   };
 
-  const handleRulerClick = (e: React.MouseEvent<HTMLDivElement>) => {
-    const rect = e.currentTarget.getBoundingClientRect();
-    const x = e.clientX - rect.left + scrollX;
-    const time = x / zoom;
-    if (onSeek) {
-      onSeek(time);
-    } else {
-      setInternalCurrentTime(time);
-    }
-  };
+  /** Compute time from a mouse X position relative to the ruler */
+  const timeFromRulerX = useCallback((clientX: number): number => {
+    if (!rulerRef.current) return 0;
+    const rect = rulerRef.current.getBoundingClientRect();
+    const x = clientX - rect.left;
+    return Math.max(0, Math.min(totalDuration, x / zoom));
+  }, [zoom, totalDuration]);
 
-  const handleScroll = (e: React.UIEvent<HTMLDivElement>) => {
-    setScrollX(e.currentTarget.scrollLeft);
-  };
+  /** Start scrubbing on mousedown — playhead follows mouse without seeking Remotion */
+  const handleRulerMouseDown = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    const time = timeFromRulerX(e.clientX);
+    setIsScrubbing(true);
+    setScrubTime(time);
+  }, [timeFromRulerX]);
+
+  /** Track mouse during scrubbing, commit seek on mouseup */
+  useEffect(() => {
+    if (!isScrubbing) return;
+
+    const handleMouseMove = (e: MouseEvent) => {
+      setScrubTime(timeFromRulerX(e.clientX));
+    };
+
+    const handleMouseUp = (e: MouseEvent) => {
+      const finalTime = timeFromRulerX(e.clientX);
+      setIsScrubbing(false);
+      if (onSeek) {
+        onSeek(finalTime);
+      } else {
+        setInternalCurrentTime(finalTime);
+      }
+    };
+
+    window.addEventListener("mousemove", handleMouseMove);
+    window.addEventListener("mouseup", handleMouseUp);
+    return () => {
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseup", handleMouseUp);
+    };
+  }, [isScrubbing, timeFromRulerX, onSeek]);
+
 
   // Drag & Drop handlers
   const handleDragStart = useCallback((e: React.DragEvent, clipId: string, type: "audio" | "video") => {
     e.dataTransfer.setData("application/clip-id", clipId);
     e.dataTransfer.setData("application/clip-type", type);
     e.dataTransfer.effectAllowed = "move";
+    // Store offset between cursor and clip left edge
+    const clipRect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    dragOffsetRef.current = e.clientX - clipRect.left;
   }, []);
 
   const handleDragOver = useCallback((e: React.DragEvent, trackType: "audio" | "video") => {
-    // Allow drop — we validate type on drop
     e.preventDefault();
     e.dataTransfer.dropEffect = "move";
     setDragOverTrack(trackType);
-  }, []);
+
+    // Compute snapped position accounting for grab offset
+    const rect = e.currentTarget.getBoundingClientRect();
+    const x = e.clientX - rect.left - dragOffsetRef.current;
+    const rawTime = Math.max(0, x / zoom);
+    const snappedTime = snapToGrid(rawTime);
+    setDragSnapX(snappedTime * zoom);
+  }, [zoom, snapToGrid]);
 
   const handleDragLeave = useCallback((e: React.DragEvent) => {
-    // Only clear if leaving the track-content (not entering a child)
     const relatedTarget = e.relatedTarget as HTMLElement | null;
     if (!e.currentTarget.contains(relatedTarget)) {
       setDragOverTrack(null);
+      setDragSnapX(null);
     }
   }, []);
 
   const handleDrop = useCallback((e: React.DragEvent, trackType: "audio" | "video") => {
     e.preventDefault();
     setDragOverTrack(null);
+    setDragSnapX(null);
 
     const clipId = e.dataTransfer.getData("application/clip-id");
     const clipType = e.dataTransfer.getData("application/clip-type") as "audio" | "video";
@@ -146,12 +201,13 @@ function Timeline({
     if (!clipId || !clipType || clipType !== trackType) return;
     if (!onMoveClip) return;
 
-    // Calculate new startTime from drop position
+    // Calculate new startTime accounting for grab offset, snapped to grid
     const rect = e.currentTarget.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const newStartTime = Math.max(0, x / zoom);
+    const x = e.clientX - rect.left - dragOffsetRef.current;
+    const rawTime = Math.max(0, x / zoom);
+    const snappedTime = snapToGrid(rawTime);
 
-    onMoveClip(clipId, clipType, newStartTime);
+    onMoveClip(clipId, clipType, snappedTime);
   }, [zoom, onMoveClip]);
 
   useEffect(() => {
@@ -187,7 +243,7 @@ function Timeline({
         <div className="timeline-controls">
           <button
             className="timeline-btn"
-            onClick={() => setZoom(z => Math.max(20, z - 10))}
+            onClick={() => setZoom(z => Math.max(10, z - 10))}
             title={t('timeline.zoomOut')}
           >
             {"\u2796"}
@@ -203,11 +259,12 @@ function Timeline({
         </div>
       </div>
 
-      <div className="timeline-body" onScroll={handleScroll} ref={timelineRef}>
+      <div className="timeline-body" ref={timelineRef}>
         <div
+          ref={rulerRef}
           className="timeline-ruler"
           style={{ width: totalDuration * zoom }}
-          onClick={handleRulerClick}
+          onMouseDown={handleRulerMouseDown}
         >
           {timeMarkers.map(marker => (
             <div
@@ -219,8 +276,8 @@ function Timeline({
             </div>
           ))}
           <div
-            className={`playhead ${isPlaying ? "playing" : ""}`}
-            style={{ left: currentTime * zoom }}
+            className={`playhead ${isPlaying ? "playing" : ""}${isScrubbing ? " scrubbing" : ""}`}
+            style={{ left: (isScrubbing ? scrubTime : currentTime) * zoom }}
           />
         </div>
 
@@ -251,10 +308,21 @@ function Timeline({
                   onClick={() => handleClipClick(clip.id, "video")}
                   onDoubleClick={() => handleClipDoubleClick(clip)}
                 >
+                  {clip.thumbnail && resolvedUrls[clip.thumbnail] && (
+                    <img
+                      className="clip-thumbnail-video"
+                      src={resolvedUrls[clip.thumbnail]}
+                      alt={clip.name}
+                      loading="lazy"
+                    />
+                  )}
                   <span className="clip-name">{clip.name}</span>
                   <span className="clip-duration">{formatTime(clip.duration)}</span>
                 </div>
               ))
+            )}
+            {dragOverTrack === "video" && dragSnapX !== null && (
+              <div className="drop-snap-indicator" style={{ left: dragSnapX }} />
             )}
           </div>
         </div>
@@ -300,6 +368,9 @@ function Timeline({
                   <span className="clip-duration">{formatTime(clip.duration)}</span>
                 </div>
               ))
+            )}
+            {dragOverTrack === "audio" && dragSnapX !== null && (
+              <div className="drop-snap-indicator" style={{ left: dragSnapX }} />
             )}
           </div>
         </div>

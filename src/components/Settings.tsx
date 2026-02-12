@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, memo } from "react";
 import { useTranslation } from "react-i18next";
 import { safeInvoke, getTauriErrorMessage } from "../utils/tauri";
 import { SUPPORTED_LANGUAGES } from "../i18n";
@@ -9,12 +9,16 @@ interface SettingsProps {
 }
 
 const GEMINI_API_KEY_STORAGE = "gemini_api_key";
+const PEXELS_API_KEY_STORAGE = "pexels_api_key";
 
 function Settings({ onClose }: SettingsProps) {
   const { t, i18n } = useTranslation();
   const [apiKey, setApiKey] = useState("");
   const [isSaved, setIsSaved] = useState(false);
   const [showKey, setShowKey] = useState(false);
+  const [pexelsApiKey, setPexelsApiKey] = useState("");
+  const [isPexelsSaved, setIsPexelsSaved] = useState(false);
+  const [showPexelsKey, setShowPexelsKey] = useState(false);
   const [ffmpegStatus, setFfmpegStatus] = useState<string>("");
   const [ffmpegAvailable, setFfmpegAvailable] = useState<boolean>(false);
 
@@ -22,6 +26,10 @@ function Settings({ onClose }: SettingsProps) {
     const savedKey = localStorage.getItem(GEMINI_API_KEY_STORAGE);
     if (savedKey) {
       setApiKey(savedKey);
+    }
+    const savedPexelsKey = localStorage.getItem(PEXELS_API_KEY_STORAGE);
+    if (savedPexelsKey) {
+      setPexelsApiKey(savedPexelsKey);
     }
     const checkFfmpeg = async () => {
       try {
@@ -49,6 +57,22 @@ function Settings({ onClose }: SettingsProps) {
       localStorage.removeItem(GEMINI_API_KEY_STORAGE);
       setApiKey("");
       setIsSaved(false);
+    }
+  };
+
+  const handlePexelsSave = () => {
+    if (pexelsApiKey.trim()) {
+      localStorage.setItem(PEXELS_API_KEY_STORAGE, pexelsApiKey.trim());
+      setIsPexelsSaved(true);
+      setTimeout(() => setIsPexelsSaved(false), 3000);
+    }
+  };
+
+  const handlePexelsClear = () => {
+    if (confirm(t('settings.confirmDeletePexelsKey'))) {
+      localStorage.removeItem(PEXELS_API_KEY_STORAGE);
+      setPexelsApiKey("");
+      setIsPexelsSaved(false);
     }
   };
 
@@ -112,6 +136,14 @@ function Settings({ onClose }: SettingsProps) {
                   {t('settings.delete')}
                 </button>
               )}
+              <a
+                href="https://aistudio.google.com/app/apikey"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="external-link-btn settings-actions-right"
+              >
+                {t('settings.openGoogleAIStudio')}
+              </a>
             </div>
 
             {isSaved && (
@@ -121,35 +153,68 @@ function Settings({ onClose }: SettingsProps) {
             )}
           </section>
 
-          {/* Info Section */}
+          {/* Pexels API Section */}
           <section className="settings-section">
             <div className="section-header">
-              <span className="section-icon">ℹ️</span>
+              <span className="section-icon">🎬</span>
               <div>
-                <h3>{t('settings.getApiKeyTitle')}</h3>
+                <h3>{t('settings.pexelsApiKeyTitle')}</h3>
                 <p className="section-description">
-                  {t('settings.getApiKeyDescription')}
+                  {t('settings.pexelsApiKeyDescription')}
                 </p>
               </div>
             </div>
 
-            <div className="info-steps">
+            <div className="form-group">
+              <label htmlFor="pexels-api-key-setting">{t('settings.apiKeyLabel')}</label>
+              <div className="input-with-toggle">
+                <input
+                  id="pexels-api-key-setting"
+                  type={showPexelsKey ? "text" : "password"}
+                  placeholder={t('settings.pexelsApiKeyPlaceholder')}
+                  value={pexelsApiKey}
+                  onChange={(e) => setPexelsApiKey(e.target.value)}
+                  className="input-field"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPexelsKey(!showPexelsKey)}
+                  className="btn-toggle"
+                  title={showPexelsKey ? t('settings.hideKey') : t('settings.showKey')}
+                >
+                  {showPexelsKey ? "👁️" : "👁️‍🗨️"}
+                </button>
+              </div>
+            </div>
+
+            <div className="settings-actions">
+              <button
+                onClick={handlePexelsSave}
+                disabled={!pexelsApiKey.trim()}
+                className="btn btn-primary"
+              >
+                {t('settings.save')}
+              </button>
+              {pexelsApiKey && (
+                <button onClick={handlePexelsClear} className="btn btn-secondary">
+                  {t('settings.delete')}
+                </button>
+              )}
               <a
-                href="https://aistudio.google.com/app/apikey"
+                href="https://www.pexels.com/api/new/"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="external-link-btn"
+                className="external-link-btn settings-actions-right"
               >
-                {t('settings.openGoogleAIStudio')}
+                {t('settings.openPexels')}
               </a>
-
-              <ol className="steps-list">
-                <li>{t('settings.step1')}</li>
-                <li>{t('settings.step2')}</li>
-                <li>{t('settings.step3')}</li>
-                <li>{t('settings.step4')}</li>
-              </ol>
             </div>
+
+            {isPexelsSaved && (
+              <div className="success-message">
+                {t('settings.pexelsApiKeySaved')}
+              </div>
+            )}
           </section>
 
           {/* FFmpeg Section */}
@@ -231,4 +296,8 @@ export function getStoredApiKey(): string | null {
   return localStorage.getItem(GEMINI_API_KEY_STORAGE);
 }
 
-export default Settings;
+export function getStoredPexelsApiKey(): string | null {
+  return localStorage.getItem(PEXELS_API_KEY_STORAGE);
+}
+
+export default memo(Settings);

@@ -1,10 +1,12 @@
 // Prevents additional console window on Windows in release, DO NOT REMOVE!!
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-use std::process::Command;
+use std::process::{Command, Stdio};
+use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 use serde::{Deserialize, Serialize};
 use base64::{Engine as _, engine::general_purpose};
+use tauri::Emitter;
 
 /// Resolve the path to a sidecar binary (ffmpeg or ffprobe).
 /// Looks next to the current executable with the Tauri target-triple suffix,
@@ -310,7 +312,7 @@ async fn generate_voice(text: String, api_key: String, output_path: String) -> R
 
 // Générer un script de podcast à partir d'une URL avec Gemini API
 #[tauri::command]
-async fn generate_podcast_script(url: String, api_key: String) -> Result<String, String> {
+async fn generate_podcast_script(url: String, api_key: String, style_prompt: String) -> Result<String, String> {
     println!("Génération de script podcast depuis: {}", url);
 
     // 1. Fetch le contenu du site web
@@ -354,20 +356,8 @@ async fn generate_podcast_script(url: String, api_key: String) -> Result<String,
     .await
     .map_err(|e| format!("Erreur thread extraction: {}", e))??;
     
-    // 3. Appeler Gemini API
-    let prompt = format!(
-        "Tu es un scénariste de podcast professionnel. À partir du contenu suivant extrait d'un site web, crée un script de podcast captivant et informatif.\n\n\
-        Le script doit:\n\
-        - Avoir une introduction accrocheuse\n\
-        - Présenter les points clés de manière conversationnelle\n\
-        - Inclure des transitions naturelles\n\
-        - Se terminer par une conclusion mémorable\n\
-        - Durer environ 5-10 minutes à la lecture\n\
-        - Être écrit en français\n\n\
-        Contenu source:\n{}\n\n\
-        Script de podcast:",
-        content
-    );
+    // 3. Appeler Gemini API avec le prompt de style fourni par le frontend
+    let prompt = format!("{}\n\nContenu source:\n{}\n\nScript de podcast:", style_prompt, content);
     
     let request_body = GeminiRequest {
         contents: vec![GeminiContent {
@@ -414,8 +404,8 @@ async fn generate_podcast_script(url: String, api_key: String) -> Result<String,
 
 // Générer des suggestions de scènes vidéo à partir d'un script podcast
 #[tauri::command]
-async fn generate_video_scenes(script: String, api_key: String) -> Result<String, String> {
-    println!("Génération de scènes vidéo depuis le script...");
+async fn generate_video_scenes(script: String, api_key: String, total_duration: f64, max_scene_duration: u32) -> Result<String, String> {
+    println!("Génération de scènes vidéo depuis le script (durée totale: {}s, max par scène: {}s)...", total_duration, max_scene_duration);
 
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(60))
@@ -424,14 +414,15 @@ async fn generate_video_scenes(script: String, api_key: String) -> Result<String
 
     let prompt = format!(
         "Analyse ce script de podcast et identifie des scènes vidéo qui pourraient l'illustrer visuellement.\n\
+        La durée TOTALE de l'audio est de {:.0} secondes. La somme des durées de toutes les scènes DOIT être exactement égale à {:.0} secondes.\n\
         Pour chaque scène, donne:\n\
         - description: description visuelle courte de la scène (max 100 caractères)\n\
-        - duration: durée suggérée en secondes (entre 5 et 20)\n\
-        - scriptExcerpt: l'extrait du script que cette scène illustre (max 150 caractères)\n\n\
-        Retourne UNIQUEMENT un tableau JSON valide, sans texte avant ou après.\n\
-        Identifie entre 5 et 15 scènes.\n\n\
+        - duration: durée en secondes (nombre entier, minimum 4, MAXIMUM {} secondes par scène). La somme de toutes les durées = {:.0}s\n\
+        - scriptExcerpt: l'extrait du script que cette scène illustre (max 150 caractères)\n\
+        - searchKeywords: 2 à 4 mots-clés EN ANGLAIS pour rechercher une vidéo stock correspondante (ex: \"aerial city skyline\", \"scientist laboratory research\")\n\n\
+        Retourne UNIQUEMENT un tableau JSON valide, sans texte avant ou après.\n\n\
         Script:\n{}",
-        script
+        total_duration, total_duration, max_scene_duration, total_duration, script
     );
 
     let request_body = GeminiRequest {
@@ -660,80 +651,367 @@ fn get_video_info(video_path: String) -> Result<String, String> {
     }
 }
 
-// Commande pour exporter le projet final en MP4
+/// A video clip with its timeline position and duration for export.
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ExportVideoClip {
+    path: String,
+    duration: f64,
+}
+
+/// Export the final project as MP4 by concatenating video clips
+/// (trimmed to scene duration, scaled to 1080p) and mixing audio.
+/// Runs FFmpeg asynchronously with progress events emitted to the frontend.
 #[tauri::command]
-fn export_project(clips: Vec<String>, output_path: String, quality: String) -> Result<String, String> {
-    println!("Export du projet vers {} avec qualité {}", output_path, quality);
-    
-    if clips.is_empty() {
-        return Err("Aucun clip à exporter".to_string());
+async fn export_project(
+    app_handle: tauri::AppHandle,
+    video_clips: Vec<ExportVideoClip>,
+    audio_path: Option<String>,
+    output_path: String,
+    quality: String,
+    total_duration: f64,
+) -> Result<String, String> {
+    println!("Export to {} with quality {}", output_path, quality);
+
+    if video_clips.is_empty() && audio_path.is_none() {
+        return Err("No clips to export".to_string());
     }
-    
-    if clips.len() == 1 {
-        let output = Command::new(sidecar_path("ffmpeg"))
-            .arg("-i")
-            .arg(&clips[0])
-            .arg("-c:v")
-            .arg("libx264")
-            .arg("-preset")
-            .arg(&quality)
-            .arg("-c:a")
-            .arg("aac")
-            .arg("-b:a")
-            .arg("192k")
-            .arg("-y")
-            .arg(&output_path)
-            .output()
-            .map_err(|e| format!("Erreur lors de l'exécution de FFmpeg: {}", e))?;
-        
-        if output.status.success() {
-            return Ok(format!("Projet exporté avec succès: {}", output_path));
-        } else {
-            let error = String::from_utf8_lossy(&output.stderr);
-            return Err(format!("Erreur FFmpeg: {}", error));
+
+    // Create output directory if needed
+    if let Some(parent) = Path::new(&output_path).parent() {
+        std::fs::create_dir_all(parent)
+            .map_err(|e| format!("Error creating output directory: {}", e))?;
+    }
+
+    // Run the blocking FFmpeg process in a separate thread
+    tokio::task::spawn_blocking(move || {
+        let mut cmd = Command::new(sidecar_path("ffmpeg"));
+
+        // Add all video inputs
+        for clip in &video_clips {
+            cmd.arg("-i").arg(&clip.path);
         }
+
+        // Add audio input (last input)
+        let audio_input_index = video_clips.len();
+        if let Some(ref ap) = audio_path {
+            cmd.arg("-i").arg(ap);
+        }
+
+        if !video_clips.is_empty() {
+            // Build complex filter: trim each video, scale to 1080p, concat
+            let mut filter = String::new();
+            for (i, clip) in video_clips.iter().enumerate() {
+                filter.push_str(&format!(
+                    "[{i}:v]trim=duration={dur},setpts=PTS-STARTPTS,\
+                     scale=1920:1080:force_original_aspect_ratio=decrease,\
+                     pad=1920:1080:(ow-iw)/2:(oh-ih)/2,fps=30[v{i}];",
+                    i = i,
+                    dur = clip.duration,
+                ));
+            }
+
+            // Concat all video streams
+            for i in 0..video_clips.len() {
+                filter.push_str(&format!("[v{i}]"));
+            }
+            filter.push_str(&format!("concat=n={}:v=1:a=0[vout]", video_clips.len()));
+
+            cmd.arg("-filter_complex").arg(&filter);
+            cmd.arg("-map").arg("[vout]");
+
+            if audio_path.is_some() {
+                cmd.arg("-map").arg(format!("{}:a", audio_input_index));
+            }
+
+            cmd.arg("-c:v").arg("libx264");
+            cmd.arg("-preset").arg(&quality);
+            cmd.arg("-pix_fmt").arg("yuv420p");
+
+            if audio_path.is_some() {
+                cmd.arg("-c:a").arg("aac");
+                cmd.arg("-b:a").arg("192k");
+                cmd.arg("-shortest");
+            }
+        } else if audio_path.is_some() {
+            // Audio-only export
+            cmd.arg("-map").arg("0:a");
+            cmd.arg("-c:a").arg("aac");
+            cmd.arg("-b:a").arg("192k");
+        }
+
+        // Enable machine-readable progress output on stdout
+        cmd.arg("-progress").arg("pipe:1");
+        cmd.arg("-y").arg(&output_path);
+
+        println!("FFmpeg command: {:?}", cmd);
+
+        let mut child = cmd
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .map_err(|e| format!("FFmpeg execution error: {}", e))?;
+
+        let stdout = child.stdout.take()
+            .ok_or_else(|| "Failed to capture FFmpeg stdout".to_string())?;
+        let stderr_pipe = child.stderr.take()
+            .ok_or_else(|| "Failed to capture FFmpeg stderr".to_string())?;
+
+        // Collect stderr in a background thread (for error reporting)
+        let stderr_thread = std::thread::spawn(move || {
+            let reader = BufReader::new(stderr_pipe);
+            let mut output = String::new();
+            for line in reader.lines().map_while(Result::ok) {
+                output.push_str(&line);
+                output.push('\n');
+            }
+            output
+        });
+
+        // Parse FFmpeg progress from stdout and emit events
+        let reader = BufReader::new(stdout);
+        for line in reader.lines().map_while(Result::ok) {
+            if let Some(value) = line.strip_prefix("out_time_us=") {
+                if let Ok(us) = value.parse::<f64>() {
+                    let seconds = us / 1_000_000.0;
+                    let percent = if total_duration > 0.0 {
+                        (seconds / total_duration * 100.0).min(100.0).max(0.0)
+                    } else {
+                        0.0
+                    };
+                    let _ = app_handle.emit("export-progress", percent);
+                }
+            }
+        }
+
+        let status = child.wait()
+            .map_err(|e| format!("FFmpeg wait error: {}", e))?;
+
+        let stderr_output = stderr_thread.join().unwrap_or_default();
+
+        if status.success() {
+            let _ = app_handle.emit("export-progress", 100.0_f64);
+            Ok(format!("Project exported: {}", output_path))
+        } else {
+            Err(format!("FFmpeg error: {}", stderr_output))
+        }
+    })
+    .await
+    .map_err(|e| format!("Export task error: {}", e))?
+}
+
+/// Pexels API response structures for video search
+#[derive(Deserialize)]
+struct PexelsSearchResponse {
+    videos: Vec<PexelsVideo>,
+}
+
+#[derive(Deserialize)]
+struct PexelsVideo {
+    video_files: Vec<PexelsVideoFile>,
+}
+
+#[derive(Deserialize)]
+struct PexelsVideoFile {
+    #[serde(default)]
+    file_type: Option<String>,
+    #[serde(default)]
+    quality: Option<String>,
+    #[serde(default)]
+    width: Option<u32>,
+    link: String,
+}
+
+/// Search for a stock video on Pexels and download it to the project directory.
+/// Returns the local file path if successful.
+/// Skips download if the file already exists.
+#[tauri::command]
+async fn search_and_download_pexels_video(
+    api_key: String,
+    query: String,
+    _min_duration: u32,
+    project_path: String,
+    scene_index: u32,
+) -> Result<String, String> {
+    let file_name = format!("scene_{:03}.mp4", scene_index);
+    let videos_dir = Path::new(&project_path).join("videos");
+    let output_path = videos_dir.join(&file_name);
+
+    // Skip download if file already exists
+    if output_path.exists() {
+        return Ok(output_path.to_string_lossy().to_string());
     }
-    
-    let list_path = Path::new(&output_path)
-        .parent()
-        .unwrap_or(Path::new("."))
-        .join("export_list.txt");
-    
-    let mut list_content = String::new();
-    for path in &clips {
-        list_content.push_str(&format!("file '{}'\n", path.replace("\\", "/")));
+
+    // Create videos directory if absent
+    std::fs::create_dir_all(&videos_dir)
+        .map_err(|e| format!("Error creating videos directory: {}", e))?;
+
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(120))
+        .build()
+        .map_err(|e| format!("Error creating HTTP client: {}", e))?;
+
+    // Search Pexels API
+    let search_response = client
+        .get("https://api.pexels.com/videos/search")
+        .header("Authorization", &api_key)
+        .query(&[
+            ("query", query.as_str()),
+            ("per_page", "5"),
+            ("orientation", "landscape"),
+        ])
+        .send()
+        .await
+        .map_err(|e| format!("Pexels API request error: {}", e))?;
+
+    if !search_response.status().is_success() {
+        let status = search_response.status();
+        let error_text = search_response.text().await.unwrap_or_default();
+        return Err(format!("Pexels API error ({}): {}", status, error_text));
     }
-    
-    std::fs::write(&list_path, list_content)
-        .map_err(|e| format!("Erreur création fichier liste: {}", e))?;
-    
+
+    let pexels_data: PexelsSearchResponse = search_response
+        .json()
+        .await
+        .map_err(|e| format!("Error parsing Pexels response: {}", e))?;
+
+    if pexels_data.videos.is_empty() {
+        return Err(format!("No video found on Pexels for: {}", query));
+    }
+
+    // Select the best video file: prefer mp4, HD quality, highest resolution
+    let best_file = pexels_data
+        .videos
+        .iter()
+        .flat_map(|v| v.video_files.iter())
+        .filter(|f| {
+            f.file_type
+                .as_deref()
+                .map(|t| t.contains("mp4"))
+                .unwrap_or(false)
+        })
+        .max_by_key(|f| {
+            let quality_score = match f.quality.as_deref() {
+                Some("hd") => 2,
+                Some("sd") => 1,
+                _ => 0,
+            };
+            let width = f.width.unwrap_or(0);
+            (quality_score, width)
+        })
+        .or_else(|| {
+            // Fallback: take any file with highest resolution
+            pexels_data
+                .videos
+                .iter()
+                .flat_map(|v| v.video_files.iter())
+                .max_by_key(|f| f.width.unwrap_or(0))
+        })
+        .ok_or_else(|| "No suitable video file found".to_string())?;
+
+    println!(
+        "Downloading Pexels video: {} (quality: {:?}, width: {:?})",
+        best_file.link, best_file.quality, best_file.width
+    );
+
+    // Download the video file
+    let video_response = client
+        .get(&best_file.link)
+        .send()
+        .await
+        .map_err(|e| format!("Video download error: {}", e))?;
+
+    if !video_response.status().is_success() {
+        return Err(format!(
+            "Video download failed ({})",
+            video_response.status()
+        ));
+    }
+
+    let video_bytes = video_response
+        .bytes()
+        .await
+        .map_err(|e| format!("Error reading video data: {}", e))?;
+
+    std::fs::write(&output_path, &video_bytes)
+        .map_err(|e| format!("Error writing video file: {}", e))?;
+
+    println!(
+        "Video saved: {} ({} bytes)",
+        output_path.display(),
+        video_bytes.len()
+    );
+
+    Ok(output_path.to_string_lossy().to_string())
+}
+
+/// Extract a thumbnail frame from a video file using FFmpeg.
+/// Saves the thumbnail as a JPEG in the project's `cache/` directory.
+#[tauri::command]
+fn generate_video_thumbnail(video_path: String, thumbnail_path: String) -> Result<String, String> {
+    // Create parent directory if needed
+    if let Some(parent) = Path::new(&thumbnail_path).parent() {
+        std::fs::create_dir_all(parent)
+            .map_err(|e| format!("Error creating cache directory: {}", e))?;
+    }
+
     let output = Command::new(sidecar_path("ffmpeg"))
-        .arg("-f")
-        .arg("concat")
-        .arg("-safe")
-        .arg("0")
         .arg("-i")
-        .arg(&list_path)
+        .arg(&video_path)
+        .arg("-ss")
+        .arg("1")
+        .arg("-vframes")
+        .arg("1")
+        .arg("-vf")
+        .arg("scale=480:-1")
+        .arg("-q:v")
+        .arg("3")
+        .arg("-y")
+        .arg(&thumbnail_path)
+        .output()
+        .map_err(|e| format!("FFmpeg thumbnail error: {}", e))?;
+
+    if output.status.success() {
+        println!("Thumbnail generated: {}", thumbnail_path);
+        Ok(thumbnail_path)
+    } else {
+        let error = String::from_utf8_lossy(&output.stderr);
+        Err(format!("FFmpeg thumbnail error: {}", error))
+    }
+}
+
+/// Generate a low-resolution proxy video for preview playback.
+/// Transcodes to 360p H.264 with fast preset for quick loading.
+#[tauri::command]
+fn generate_video_proxy(video_path: String, proxy_path: String) -> Result<String, String> {
+    if let Some(parent) = Path::new(&proxy_path).parent() {
+        std::fs::create_dir_all(parent)
+            .map_err(|e| format!("Error creating proxy directory: {}", e))?;
+    }
+
+    let output = Command::new(sidecar_path("ffmpeg"))
+        .arg("-i")
+        .arg(&video_path)
+        .arg("-vf")
+        .arg("scale=-2:360")
         .arg("-c:v")
         .arg("libx264")
         .arg("-preset")
-        .arg(&quality)
-        .arg("-c:a")
-        .arg("aac")
-        .arg("-b:a")
-        .arg("192k")
+        .arg("ultrafast")
+        .arg("-crf")
+        .arg("30")
+        .arg("-an")
         .arg("-y")
-        .arg(&output_path)
+        .arg(&proxy_path)
         .output()
-        .map_err(|e| format!("Erreur lors de l'exécution de FFmpeg: {}", e))?;
-    
-    let _ = std::fs::remove_file(&list_path);
-    
+        .map_err(|e| format!("FFmpeg proxy error: {}", e))?;
+
     if output.status.success() {
-        Ok(format!("Projet exporté avec succès: {}", output_path))
+        println!("Proxy generated: {}", proxy_path);
+        Ok(proxy_path)
     } else {
         let error = String::from_utf8_lossy(&output.stderr);
-        Err(format!("Erreur FFmpeg: {}", error))
+        Err(format!("FFmpeg proxy error: {}", error))
     }
 }
 
@@ -768,6 +1046,11 @@ fn read_audio_file(file_path: String) -> Result<String, String> {
         "m4a" => "audio/mp4",
         "ogg" => "audio/ogg",
         "flac" => "audio/flac",
+        "jpg" | "jpeg" => "image/jpeg",
+        "png" => "image/png",
+        "webp" => "image/webp",
+        "mp4" => "video/mp4",
+        "webm" => "video/webm",
         _ => "audio/mpeg",
     };
 
@@ -791,7 +1074,10 @@ async fn main() {
             add_transition,
             get_video_info,
             export_project,
-            read_audio_file
+            read_audio_file,
+            search_and_download_pexels_video,
+            generate_video_thumbnail,
+            generate_video_proxy
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

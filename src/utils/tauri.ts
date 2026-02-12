@@ -75,3 +75,12 @@ export async function loadAudioAsBlob(filePath: string): Promise<string> {
   const dataUri = await safeInvoke<string>('read_audio_file', { filePath });
   return dataUri;
 }
+
+// Load any file as a data URI via Rust command (images, videos, etc.)
+export async function loadFileAsDataUri(filePath: string): Promise<string> {
+  if (!isTauriAvailable()) {
+    throw new Error("Tauri not available");
+  }
+
+  return await safeInvoke<string>('read_audio_file', { filePath });
+}

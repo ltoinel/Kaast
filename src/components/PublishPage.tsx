@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef, memo } from "react";
 import { useTranslation } from "react-i18next";
 import "./PublishPage.css";
 import { safeInvoke, getTauriErrorMessage } from "../utils/tauri";
@@ -18,9 +18,11 @@ function PublishPage({ audioClips, videoClips, projectPath, projectName }: Publi
   const { t } = useTranslation();
   const [quality, setQuality] = useState<ExportQuality>("medium");
   const [isExporting, setIsExporting] = useState(false);
-  const [progress, setProgress] = useState<string>("");
+  const [progressText, setProgressText] = useState<string>("");
+  const [progressPercent, setProgressPercent] = useState<number>(0);
   const [error, setError] = useState<string>("");
   const [exportResult, setExportResult] = useState<string>("");
+  const unlistenRef = useRef<(() => void) | null>(null);
 
   const totalDuration = useMemo(() => {
     return Math.max(
@@ -41,7 +43,8 @@ function PublishPage({ audioClips, videoClips, projectPath, projectName }: Publi
     setIsExporting(true);
     setError("");
     setExportResult("");
-    setProgress(t("publish.preparing"));
+    setProgressText(t("publish.preparing"));
+    setProgressPercent(0);
 
     try {
       // Build export filename: {projectName}_{quality}_{timestamp}.mp4
@@ -55,12 +58,10 @@ function PublishPage({ audioClips, videoClips, projectPath, projectName }: Publi
 
       if (projectPath) {
         const exportDir = `${projectPath}/export`;
-        // Ensure export directory exists
         const { mkdir } = await import("@tauri-apps/plugin-fs");
         await mkdir(exportDir, { recursive: true });
         outputPath = `${exportDir}/${fileName}`;
       } else {
-        // Ask user for save location
         const { save } = await import("@tauri-apps/plugin-dialog");
         const savePath = await save({
           filters: [{ name: "MP4 Video", extensions: ["mp4"] }],
@@ -73,27 +74,43 @@ function PublishPage({ audioClips, videoClips, projectPath, projectName }: Publi
         outputPath = savePath;
       }
 
-      // Collect all media paths (video first, then audio)
-      const allClips = [
-        ...videoClips.map(c => c.path),
-        ...audioClips.map(c => c.path),
-      ];
+      // Listen for FFmpeg progress events from Rust
+      const { listen } = await import("@tauri-apps/api/event");
+      const unlisten = await listen<number>("export-progress", (event) => {
+        const percent = Math.round(event.payload);
+        setProgressPercent(percent);
+        setProgressText(t("publish.encoding") + ` ${percent}%`);
+      });
+      unlistenRef.current = unlisten;
 
-      setProgress(t("publish.encoding"));
+      // Send structured clip data for proper FFmpeg assembly
+      const exportVideoClips = videoClips.map(c => ({
+        path: c.path,
+        duration: c.duration,
+      }));
+      const audioPath = audioClips.length > 0 ? audioClips[0].path : null;
 
       const result = await safeInvoke<string>("export_project", {
-        clips: allClips,
+        videoClips: exportVideoClips,
+        audioPath,
         outputPath,
         quality,
+        totalDuration,
       });
 
       setExportResult(result);
-      setProgress("");
+      setProgressText("");
     } catch (err) {
       setError(getTauriErrorMessage(err));
-      setProgress("");
+      setProgressText("");
     } finally {
+      // Clean up event listener
+      if (unlistenRef.current) {
+        unlistenRef.current();
+        unlistenRef.current = null;
+      }
       setIsExporting(false);
+      setProgressPercent(0);
     }
   };
 
@@ -118,7 +135,7 @@ function PublishPage({ audioClips, videoClips, projectPath, projectName }: Publi
     <div className="publish-page">
       {/* Header */}
       <div className="publish-header">
-        <h2>{t("publish.title")}</h2>
+        <h2>{t("app.publish")}</h2>
         <span className="publish-subtitle">{t("publish.subtitle")}</span>
       </div>
 
@@ -187,7 +204,7 @@ function PublishPage({ audioClips, videoClips, projectPath, projectName }: Publi
           </div>
         </div>
 
-        {/* Export Button */}
+        {/* Export Button + Progress */}
         <div className="publish-actions">
           <button
             className="btn btn-primary btn-export"
@@ -197,12 +214,24 @@ function PublishPage({ audioClips, videoClips, projectPath, projectName }: Publi
             {isExporting ? (
               <>
                 <span className="spinner"></span>
-                {progress}
+                {progressText}
               </>
             ) : (
               t("publish.exportButton")
             )}
           </button>
+
+          {isExporting && (
+            <div className="export-progress">
+              <div className="export-progress-bar">
+                <div
+                  className="export-progress-fill"
+                  style={{ width: `${progressPercent}%` }}
+                />
+              </div>
+              <span className="export-progress-label">{progressPercent}%</span>
+            </div>
+          )}
         </div>
 
         {/* Error */}
@@ -231,4 +260,4 @@ function PublishPage({ audioClips, videoClips, projectPath, projectName }: Publi
   );
 }
 
-export default PublishPage;
+export default memo(PublishPage);

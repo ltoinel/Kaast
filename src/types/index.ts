@@ -21,6 +21,7 @@ export interface VideoClip {
   duration: number;
   startTime: number;
   thumbnail?: string;
+  proxyPath?: string;
 }
 
 export interface VideoScene {
@@ -28,4 +29,8 @@ export interface VideoScene {
   description: string;
   duration: number;
   scriptExcerpt: string;
+  searchKeywords?: string;
+  videoPath?: string;
+  thumbnailPath?: string;
+  proxyPath?: string;
 }

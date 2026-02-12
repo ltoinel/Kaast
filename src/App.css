@@ -159,6 +159,17 @@
   overflow: hidden;
 }
 
+.tab-panel {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  overflow: hidden;
+}
+
+.tab-panel-hidden {
+  display: none;
+}
+
 /* Responsive */
 @media (max-width: 600px) {
   .project-header {

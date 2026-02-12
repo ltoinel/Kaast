@@ -27,6 +27,7 @@ const RemotionPreview: React.FC<RemotionPreviewProps> = ({
       style={{ width: "100%", height: "100%" }}
       controls={false}
       clickToPlay={false}
+      acknowledgeRemotionLicense
     />
   );
 };

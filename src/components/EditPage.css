@@ -7,6 +7,20 @@
   overflow: hidden;
 }
 
+/* Page Header */
+.edit-header {
+  padding: var(--spacing-sm) var(--spacing-md);
+  background: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.edit-header h2 {
+  margin: 0;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
 /* Top Section: 3-column grid (Media Browser | Preview | Inspector) */
 .edit-top {
   display: grid;
@@ -19,7 +33,7 @@
 
 /* Bottom Section: Timeline */
 .edit-bottom {
-  height: 200px;
+  height: 250px;
   border-top: 1px solid var(--border-strong);
   background: var(--bg-secondary);
 }
@@ -464,6 +478,6 @@
   }
 
   .edit-bottom {
-    height: 150px;
+    height: 200px;
   }
 }

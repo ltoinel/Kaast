@@ -124,8 +124,13 @@
 
 .settings-actions {
   display: flex;
+  align-items: center;
   gap: var(--spacing-sm);
   margin-top: var(--spacing-md);
+}
+
+.settings-actions-right {
+  margin-left: auto;
 }
 
 
@@ -230,3 +235,4 @@
   font-family: var(--font-mono);
   word-break: break-all;
 }
+

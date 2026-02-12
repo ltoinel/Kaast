@@ -37,6 +37,49 @@ npm run tauri dev          # Development mode
 npm run tauri build        # Production build
 ```
 
+## Audio/Video Playback (Remotion)
+
+All audio/video playback in the frontend MUST use Remotion components. Never use raw HTML `<video>` or `<audio>` tags directly.
+
+Reference: https://www.remotion.dev/docs/video-tags
+
+### Available components
+
+- **`<OffthreadVideo />`** (recommended) — Built on Rust + FFmpeg, guarantees frame-perfect playback. Supports the widest range of containers (.aac, .avi, .caf, .flac, .flv, .m4a, .mkv, .mp3, .mp4, .ogg, .wav, .webm). Does not support looping.
+- **`<Video />`** (from `@remotion/media`) — WebCodecs-based, fastest rendering, frame-perfect. Requires CORS configuration. Falls back to `<OffthreadVideo />` for unsupported formats.
+- **`<Html5Video />`** (from `remotion`) — Traditional HTML5 `<video>` wrapper. Not guaranteed frame-accurate. Allows looping and partial downloads with `muted` property.
+
+### Rules
+
+- Prefer `<OffthreadVideo />` by default for reliable frame-perfect rendering
+- All three components support `playbackRate` for speed adjustment
+- `toneFrequency` (pitch change) only works during rendering
+- Use `useRemotionEnvironment()` to deploy different components in preview vs rendering modes
+
+## Code Quality
+
+### Clean Code
+
+- Follow Clean Code principles: meaningful names, single responsibility, DRY, KISS
+- Functions and methods must do one thing and do it well
+- Avoid magic numbers and hardcoded values — use named constants
+- Prefer explicit code over clever code: readability first
+
+### Documentation
+
+- All functions, components, hooks, and Tauri commands must have JSDoc (TypeScript) or `///` doc comments (Rust)
+- Document the **why**, not just the **what** — explain intent and business logic
+- Each component file must start with a brief header comment describing its purpose
+- Keep comments up to date when modifying code — stale comments are worse than no comments
+
+### Cyclomatic Complexity
+
+- Keep cyclomatic complexity per function below **10**
+- Extract complex conditionals into well-named helper functions or variables
+- Prefer early returns over deep nesting
+- Split large components (>150 lines of logic) into smaller, focused sub-components or custom hooks
+- Avoid nested ternaries — use intermediate variables or helper functions instead
+
 ## Conventions
 
 - Language: English (default), multilingual via react-i18next

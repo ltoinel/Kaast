@@ -4,6 +4,7 @@ import "./App.css";
 import { isTauriAvailable } from "./utils/tauri";
 import { Project, setCurrentProject, getCurrentProject } from "./utils/project";
 import ProjectStartup from "./components/ProjectStartup";
+import StyleEditor from "./components/StyleEditor";
 import ScriptEditor from "./components/ScriptEditor";
 import ScenesPage from "./components/ScenesPage";
 import type { AudioClip, VideoClip } from "./types";
@@ -13,12 +14,22 @@ import Settings from "./components/Settings";
 import DebugConsole from "./components/DebugConsole";
 import { useMediaDuration } from "./hooks/useMediaDuration";
 
-type TabType = "editor" | "scenes" | "edit" | "publish" | "settings";
+type TabType = "style" | "editor" | "scenes" | "edit" | "publish" | "settings";
 
 // SVG Icon components
 const IconPlus = () => (
   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
+  </svg>
+);
+
+const IconPalette = () => (
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+    <circle cx="13.5" cy="6.5" r="0.5" fill="currentColor" />
+    <circle cx="17.5" cy="10.5" r="0.5" fill="currentColor" />
+    <circle cx="8.5" cy="7.5" r="0.5" fill="currentColor" />
+    <circle cx="6.5" cy="12.5" r="0.5" fill="currentColor" />
+    <path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z" />
   </svg>
 );
 
@@ -79,8 +90,17 @@ function App() {
   const [videoClips, setVideoClips] = useState<VideoClip[]>([]);
   const [showStartup, setShowStartup] = useState<boolean>(true);
   const [showConsole, setShowConsole] = useState<boolean>(false);
+  const [visitedTabs, setVisitedTabs] = useState<Set<TabType>>(new Set(["editor"]));
   const autoSaveRef = useRef<number | null>(null);
   const lastSaveRef = useRef<string>("");
+
+  // Track visited tabs for lazy mounting
+  useEffect(() => {
+    setVisitedTabs(prev => {
+      if (prev.has(activeTab)) return prev;
+      return new Set(prev).add(activeTab);
+    });
+  }, [activeTab]);
 
   // Load audio files from project directory
   const loadProjectAudioFiles = useCallback(async (projectPath: string) => {
@@ -214,10 +234,9 @@ function App() {
       name: audioPath.split("/").pop() || "Podcast",
       path: audioPath,
       duration: duration,
-      startTime: audioClips.reduce((max, c) => Math.max(max, c.startTime + c.duration), 0),
+      startTime: 0,
     };
-    setAudioClips([...audioClips, newClip]);
-    setActiveTab("scenes");
+    setAudioClips([newClip]);
   };
 
   const handleDeleteClip = useCallback((clipId: string, type: "audio" | "video") => {
@@ -239,6 +258,11 @@ function App() {
   const handleOpenSettings = () => {
     setActiveTab("settings");
   };
+
+  const handleProduceToTimeline = useCallback((clips: VideoClip[]) => {
+    setVideoClips(clips);
+    setActiveTab("edit");
+  }, []);
 
   const handleAddMedia = async () => {
     try {
@@ -304,6 +328,14 @@ function App() {
 
         <nav className="sidebar-nav">
           <button
+            className={`nav-item ${activeTab === "style" ? "active" : ""}`}
+            onClick={() => setActiveTab("style")}
+            title={t('app.style')}
+          >
+            <span className="nav-icon"><IconPalette /></span>
+          </button>
+
+          <button
             className={`nav-item ${activeTab === "editor" ? "active" : ""}`}
             onClick={() => setActiveTab("editor")}
             title={t('app.script')}
@@ -325,9 +357,6 @@ function App() {
             title={t('app.edit')}
           >
             <span className="nav-icon"><IconScissors /></span>
-            {(audioClips.length + videoClips.length) > 0 && (
-              <span className="nav-badge">{audioClips.length + videoClips.length}</span>
-            )}
           </button>
 
           <button
@@ -365,46 +394,62 @@ function App() {
           <span className="project-path">{currentProject?.path}</span>
         </header>
 
-        {/* Tab Content */}
+        {/* Tab Content — CSS-based visibility with lazy mounting */}
         <div className="tab-content">
-          {activeTab === "editor" && (
-            <ScriptEditor
-              onAudioGenerated={handleAudioGenerated}
-              onOpenSettings={handleOpenSettings}
-            />
-          )}
+          <div className={`tab-panel ${activeTab !== "style" ? "tab-panel-hidden" : ""}`}>
+            {visitedTabs.has("style") && <StyleEditor />}
+          </div>
 
-          {activeTab === "scenes" && (
-            <ScenesPage
-              audioClips={audioClips}
-              projectPath={currentProject?.path}
-              onOpenSettings={handleOpenSettings}
-            />
-          )}
+          <div className={`tab-panel ${activeTab !== "editor" ? "tab-panel-hidden" : ""}`}>
+            {visitedTabs.has("editor") && (
+              <ScriptEditor
+                audioClips={audioClips}
+                onAudioGenerated={handleAudioGenerated}
+                onOpenSettings={handleOpenSettings}
+              />
+            )}
+          </div>
 
-          {activeTab === "edit" && (
-            <EditPage
-              audioClips={audioClips}
-              videoClips={videoClips}
-              onAddMedia={handleAddMedia}
-              onDeleteClip={handleDeleteClip}
-              onMoveClip={handleMoveClip}
-              projectPath={currentProject?.path}
-            />
-          )}
+          <div className={`tab-panel ${activeTab !== "scenes" ? "tab-panel-hidden" : ""}`}>
+            {visitedTabs.has("scenes") && (
+              <ScenesPage
+                audioClips={audioClips}
+                projectPath={currentProject?.path}
+                onOpenSettings={handleOpenSettings}
+                onProduceToTimeline={handleProduceToTimeline}
+              />
+            )}
+          </div>
 
-          {activeTab === "publish" && (
-            <PublishPage
-              audioClips={audioClips}
-              videoClips={videoClips}
-              projectPath={currentProject?.path}
-              projectName={currentProject?.name}
-            />
-          )}
+          <div className={`tab-panel ${activeTab !== "edit" ? "tab-panel-hidden" : ""}`}>
+            {visitedTabs.has("edit") && (
+              <EditPage
+                audioClips={audioClips}
+                videoClips={videoClips}
+                onAddMedia={handleAddMedia}
+                onDeleteClip={handleDeleteClip}
+                onMoveClip={handleMoveClip}
+                projectPath={currentProject?.path}
+              />
+            )}
+          </div>
 
-          {activeTab === "settings" && (
-            <Settings onClose={() => setActiveTab("editor")} />
-          )}
+          <div className={`tab-panel ${activeTab !== "publish" ? "tab-panel-hidden" : ""}`}>
+            {visitedTabs.has("publish") && (
+              <PublishPage
+                audioClips={audioClips}
+                videoClips={videoClips}
+                projectPath={currentProject?.path}
+                projectName={currentProject?.name}
+              />
+            )}
+          </div>
+
+          <div className={`tab-panel ${activeTab !== "settings" ? "tab-panel-hidden" : ""}`}>
+            {visitedTabs.has("settings") && (
+              <Settings onClose={() => setActiveTab("editor")} />
+            )}
+          </div>
         </div>
 
         {/* Debug Console */}
