@@ -84,3 +84,50 @@ export async function loadFileAsDataUri(filePath: string): Promise<string> {
 
   return await safeInvoke<string>('read_audio_file', { filePath });
 }
+
+/** Cached streaming server port (resolved once, reused). */
+let streamingPort: number | null = null;
+
+/** Retrieve the local streaming server port from the Rust backend. */
+export async function getStreamingPort(): Promise<number> {
+  if (streamingPort !== null) return streamingPort;
+  streamingPort = await safeInvoke<number>('get_streaming_port');
+  return streamingPort;
+}
+
+/**
+ * Build a streaming URL for a local file served by the Rust HTTP server.
+ * The browser handles buffering, seeking, and Range requests natively.
+ */
+export async function getStreamingUrl(filePath: string): Promise<string> {
+  const port = await getStreamingPort();
+  return `http://127.0.0.1:${port}/stream?path=${encodeURIComponent(filePath)}`;
+}
+
+/** MIME type lookup for common video/audio extensions. */
+const MIME_TYPES: Record<string, string> = {
+  mp4: "video/mp4",
+  webm: "video/webm",
+  mkv: "video/x-matroska",
+  avi: "video/x-msvideo",
+  mov: "video/quicktime",
+  wav: "audio/wav",
+  mp3: "audio/mpeg",
+  ogg: "audio/ogg",
+  flac: "audio/flac",
+  m4a: "audio/mp4",
+};
+
+/**
+ * Read a file via the Tauri FS plugin and return a blob URL.
+ * Blob URLs are same-origin and work reliably with <video> / <audio> tags,
+ * unlike Tauri asset-protocol URLs which can fail in WebKitGTK.
+ */
+export async function loadFileAsBlobUrl(filePath: string): Promise<string> {
+  const { readFile } = await import("@tauri-apps/plugin-fs");
+  const bytes = await readFile(filePath);
+  const ext = filePath.split(".").pop()?.toLowerCase() || "";
+  const mime = MIME_TYPES[ext] || "application/octet-stream";
+  const blob = new Blob([bytes], { type: mime });
+  return URL.createObjectURL(blob);
+}

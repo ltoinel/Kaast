@@ -406,6 +406,7 @@ function App() {
                 audioClips={audioClips}
                 onAudioGenerated={handleAudioGenerated}
                 onOpenSettings={handleOpenSettings}
+                isTabActive={activeTab === "editor"}
               />
             )}
           </div>
@@ -417,6 +418,7 @@ function App() {
                 projectPath={currentProject?.path}
                 onOpenSettings={handleOpenSettings}
                 onProduceToTimeline={handleProduceToTimeline}
+                isTabActive={activeTab === "scenes"}
               />
             )}
           </div>
@@ -430,6 +432,7 @@ function App() {
                 onDeleteClip={handleDeleteClip}
                 onMoveClip={handleMoveClip}
                 projectPath={currentProject?.path}
+                isTabActive={activeTab === "edit"}
               />
             )}
           </div>

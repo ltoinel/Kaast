@@ -1,19 +1,15 @@
-export const FPS = 30;
-export const COMP_WIDTH = 1920;
-export const COMP_HEIGHT = 1080;
+/**
+ * Timecode formatting utilities for the timeline UI.
+ */
 
-export function secondsToFrames(seconds: number): number {
-  return Math.round(seconds * FPS);
-}
+/** Display frame rate used for timecode display (HH:MM:SS:FF). */
+const DISPLAY_FPS = 30;
 
-export function framesToSeconds(frames: number): number {
-  return frames / FPS;
-}
-
+/** Format a duration in seconds as a timecode string (HH:MM:SS:FF). */
 export function formatTimecode(totalSeconds: number): string {
   const hrs = Math.floor(totalSeconds / 3600);
   const mins = Math.floor((totalSeconds % 3600) / 60);
   const secs = Math.floor(totalSeconds % 60);
-  const frames = Math.round((totalSeconds % 1) * FPS);
+  const frames = Math.round((totalSeconds % 1) * DISPLAY_FPS);
   return `${hrs.toString().padStart(2, "0")}:${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}:${frames.toString().padStart(2, "0")}`;
 }

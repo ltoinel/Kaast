@@ -19,6 +19,8 @@ reqwest = { version = "0.12", features = ["json", "blocking"] }
 tokio = { version = "1", features = ["full"] }
 scraper = "0.20"
 base64 = "0.22"
+axum = "0.8"
+tokio-util = { version = "0.7", features = ["io"] }
 
 [features]
 custom-protocol = ["tauri/custom-protocol"]

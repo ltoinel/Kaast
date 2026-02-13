@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useMemo, useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import "./Timeline.css";
-import { loadAudioAsBlob, revokeBlobUrl } from "../utils/tauri";
+import { getStreamingUrl } from "../utils/tauri";
 import type { AudioClip, VideoClip } from "../types";
 export type { AudioClip, VideoClip };
 
@@ -102,10 +102,7 @@ function Timeline({
     } else if ("path" in clip) {
       if (audioRef.current) {
         try {
-          if (audioRef.current.src.startsWith('blob:')) {
-            revokeBlobUrl(audioRef.current.src);
-          }
-          const url = await loadAudioAsBlob(clip.path);
+          const url = await getStreamingUrl(clip.path);
           audioRef.current.src = url;
           audioRef.current.play();
           setInternalIsPlaying(true);
@@ -124,7 +121,7 @@ function Timeline({
     return Math.max(0, Math.min(totalDuration, x / zoom));
   }, [zoom, totalDuration]);
 
-  /** Start scrubbing on mousedown — playhead follows mouse without seeking Remotion */
+  /** Start scrubbing on mousedown — playhead follows mouse */
   const handleRulerMouseDown = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
     e.preventDefault();
     const time = timeFromRulerX(e.clientX);

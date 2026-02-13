@@ -1,12 +1,12 @@
 import { useState, useEffect, useCallback, useMemo, useRef, memo } from "react";
 import { useTranslation } from "react-i18next";
 import "./ScenesPage.css";
-import { safeInvoke, getTauriErrorMessage, loadAudioAsBlob, loadFileAsDataUri } from "../utils/tauri";
+import { safeInvoke, getTauriErrorMessage, loadFileAsDataUri, getStreamingUrl } from "../utils/tauri";
 import type { AudioClip, VideoClip, VideoScene } from "../types";
-import RemotionPreview from "./RemotionPreview";
-import { useRemotionSync } from "../hooks/useRemotionSync";
-import type { PodcastCompositionProps } from "../remotion/PodcastComposition";
+import MediaPreview from "./MediaPreview";
+import { usePlaybackSync } from "../hooks/usePlaybackSync";
 import { getStoredPexelsApiKey } from "./Settings";
+import { getStoredSceneStylePrompt } from "./StyleEditor";
 
 /** Sparkles icon for the Generate button */
 const IconSparkles = () => (
@@ -42,10 +42,11 @@ interface ScenesPageProps {
   projectPath?: string;
   onOpenSettings?: () => void;
   onProduceToTimeline?: (clips: VideoClip[]) => void;
+  isTabActive?: boolean;
 }
 
-function ScenesPage({ audioClips, projectPath, onOpenSettings, onProduceToTimeline }: ScenesPageProps) {
-  const { t } = useTranslation();
+function ScenesPage({ audioClips, projectPath, onOpenSettings, onProduceToTimeline, isTabActive = true }: ScenesPageProps) {
+  const { t, i18n } = useTranslation();
   const [scenes, setScenes] = useState<VideoScene[]>([]);
   const [script, setScript] = useState<string>("");
   const [isGenerating, setIsGenerating] = useState<boolean>(false);
@@ -69,31 +70,19 @@ function ScenesPage({ audioClips, projectPath, onOpenSettings, onProduceToTimeli
     );
   }, [audioClips]);
 
-  // Remotion sync hook for audio playback
-  const {
-    playerRef,
-    currentTime,
-    isPlaying,
-    durationInFrames,
-    handlePlayPause,
-    handleSeek,
-  } = useRemotionSync({ totalDuration, volume: 1 });
+  // Native playback sync hook
+  const playback = usePlaybackSync({ totalDuration, volume: 1, isActive: isTabActive });
 
-  // Resolve audio clip paths to data URIs via Rust backend
+  // Resolve audio clip paths to streaming URLs via local HTTP server
   useEffect(() => {
-    const paths = audioClips.map(c => c.path);
-    const uniquePaths = [...new Set(paths)];
+    const uniquePaths = [...new Set(audioClips.map(c => c.path))];
+    if (uniquePaths.length === 0) return;
 
     let cancelled = false;
     Promise.all(
       uniquePaths.map(async (p) => {
-        try {
-          const dataUri = await loadAudioAsBlob(p);
-          return [p, dataUri] as const;
-        } catch (err) {
-          console.error("Failed to load audio:", p, err);
-          return [p, ""] as const;
-        }
+        const url = await getStreamingUrl(p);
+        return [p, url] as const;
       })
     ).then((entries) => {
       if (!cancelled) {
@@ -156,8 +145,8 @@ function ScenesPage({ audioClips, projectPath, onOpenSettings, onProduceToTimeli
 
   const handleSeekInput = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const time = parseFloat(e.target.value);
-    handleSeek(time);
-  }, [handleSeek]);
+    playback.handleSeek(time);
+  }, [playback]);
 
   const handleGenerateScenes = async () => {
     const apiKey = localStorage.getItem("gemini_api_key");
@@ -181,6 +170,8 @@ function ScenesPage({ audioClips, projectPath, onOpenSettings, onProduceToTimeli
         apiKey,
         totalDuration,
         maxSceneDuration,
+        language: i18n.language,
+        sceneStylePrompt: getStoredSceneStylePrompt(),
       });
 
       const parsed = JSON.parse(result) as Array<{
@@ -229,13 +220,6 @@ function ScenesPage({ audioClips, projectPath, onOpenSettings, onProduceToTimeli
     }
   };
 
-  // Remotion composition props (audio only, no video on this page)
-  const compositionProps: PodcastCompositionProps = useMemo(() => ({
-    audioClips,
-    videoClips: [],
-    resolvedUrls,
-  }), [audioClips, resolvedUrls]);
-
   const totalScenesDuration = scenes.reduce((sum, s) => sum + s.duration, 0);
 
   // Compute scene timings using actual scene durations (no scaling)
@@ -251,12 +235,12 @@ function ScenesPage({ audioClips, projectPath, onOpenSettings, onProduceToTimeli
 
   // Find active scene index based on currentTime
   const activeSceneIndex = useMemo(() => {
-    if (!isPlaying && currentTime === 0) return -1;
+    if (!playback.isPlaying && playback.currentTime === 0) return -1;
     for (let i = sceneTimings.length - 1; i >= 0; i--) {
-      if (currentTime >= sceneTimings[i].start) return i;
+      if (playback.currentTime >= sceneTimings[i].start) return i;
     }
     return -1;
-  }, [currentTime, sceneTimings, isPlaying]);
+  }, [playback.currentTime, sceneTimings, playback.isPlaying]);
 
   // IntersectionObserver for lazy-loading thumbnails
   const observerRef = useRef<IntersectionObserver | null>(null);
@@ -298,9 +282,9 @@ function ScenesPage({ audioClips, projectPath, onOpenSettings, onProduceToTimeli
   // Click on a scene card to seek to its start time
   const handleSceneClick = useCallback((index: number) => {
     if (sceneTimings[index]) {
-      handleSeek(sceneTimings[index].start);
+      playback.handleSeek(sceneTimings[index].start);
     }
-  }, [sceneTimings, handleSeek]);
+  }, [sceneTimings, playback]);
 
   // Start editing a scene description
   const handleStartEdit = useCallback((e: React.MouseEvent, scene: VideoScene) => {
@@ -454,27 +438,29 @@ function ScenesPage({ audioClips, projectPath, onOpenSettings, onProduceToTimeli
     }
   }, [scenes, projectPath]);
 
-  /** Open the video modal for a scene */
+  /** Open the video modal for a scene via streaming URL */
   const handleOpenVideoModal = useCallback(async (e: React.MouseEvent, scene: VideoScene) => {
     e.stopPropagation();
     if (!scene.videoPath) return;
     try {
-      const dataUri = await loadFileAsDataUri(scene.videoPath);
-      setVideoModalUrl(dataUri);
+      const url = await getStreamingUrl(scene.videoPath);
+      setVideoModalUrl(url);
     } catch {
-      console.error("Failed to load video file");
+      console.error("Failed to get streaming URL");
     }
   }, []);
 
   return (
     <div className="scenes-page">
-      {/* Hidden Remotion Player for audio playback */}
+      {/* Hidden audio elements for playback */}
       {audioClips.length > 0 && totalDuration > 0 && (
-        <div style={{ position: "fixed", left: -9999, top: -9999, width: 1, height: 1, opacity: 0, pointerEvents: "none" }}>
-          <RemotionPreview
-            playerRef={playerRef}
-            compositionProps={compositionProps}
-            durationInFrames={durationInFrames}
+        <div style={{ position: "fixed", left: -9999, top: -9999, width: 0, height: 0, overflow: "hidden" }}>
+          <MediaPreview
+            audioClips={audioClips}
+            videoClips={[]}
+            resolvedUrls={resolvedUrls}
+            playback={playback}
+            audioOnly
           />
         </div>
       )}
@@ -558,10 +544,10 @@ function ScenesPage({ audioClips, projectPath, onOpenSettings, onProduceToTimeli
         <div className="scenes-audio-player">
           <button
             className="audio-play-btn"
-            onClick={handlePlayPause}
+            onClick={playback.handlePlayPause}
             disabled={audioClips.length === 0}
           >
-            {isPlaying ? "\u23F8" : "\u25B6"}
+            {playback.isPlaying ? "\u23F8" : "\u25B6"}
           </button>
           <div className="audio-progress-wrapper">
             <input
@@ -570,12 +556,12 @@ function ScenesPage({ audioClips, projectPath, onOpenSettings, onProduceToTimeli
               min="0"
               max={totalDuration || 0}
               step="0.1"
-              value={currentTime}
+              value={playback.currentTime}
               onChange={handleSeekInput}
             />
           </div>
           <span className="audio-time">
-            {formatTime(currentTime)} / {formatTime(totalDuration)}
+            {formatTime(playback.currentTime)} / {formatTime(totalDuration)}
           </span>
           <span className="audio-name">
             {audioClips[0]?.name}
@@ -608,7 +594,7 @@ function ScenesPage({ audioClips, projectPath, onOpenSettings, onProduceToTimeli
               const isPast = activeSceneIndex >= 0 && index < activeSceneIndex;
               const timing = sceneTimings[index];
               const progress = isActive && timing
-                ? Math.min(1, Math.max(0, (currentTime - timing.start) / (timing.end - timing.start)))
+                ? Math.min(1, Math.max(0, (playback.currentTime - timing.start) / (timing.end - timing.start)))
                 : 0;
               const hasThumbnail = !!scene.thumbnailPath && !!thumbnailUrls[scene.id];
               const isDownloading = downloadingSceneId === scene.id;

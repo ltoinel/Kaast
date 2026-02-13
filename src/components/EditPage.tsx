@@ -3,11 +3,10 @@ import { useTranslation } from "react-i18next";
 import "./EditPage.css";
 import type { AudioClip, VideoClip } from "../types";
 import Timeline from "./Timeline";
-import RemotionPreview from "./RemotionPreview";
-import { useRemotionSync } from "../hooks/useRemotionSync";
-import { loadAudioAsBlob, loadFileAsDataUri, convertToAssetUrl } from "../utils/tauri";
-import { formatTimecode } from "../remotion/constants";
-import type { PodcastCompositionProps } from "../remotion/PodcastComposition";
+import MediaPreview from "./MediaPreview";
+import { usePlaybackSync } from "../hooks/usePlaybackSync";
+import { convertToAssetUrl, getStreamingUrl } from "../utils/tauri";
+import { formatTimecode } from "../utils/timecode";
 
 interface EditPageProps {
   audioClips: AudioClip[];
@@ -16,9 +15,10 @@ interface EditPageProps {
   onDeleteClip?: (clipId: string, type: "audio" | "video") => void;
   onMoveClip?: (clipId: string, type: "audio" | "video", newStartTime: number) => void;
   projectPath?: string;
+  isTabActive?: boolean;
 }
 
-function EditPage({ audioClips, videoClips, onAddMedia, onDeleteClip, onMoveClip }: EditPageProps) {
+function EditPage({ audioClips, videoClips, onAddMedia, onDeleteClip, onMoveClip, isTabActive = true }: EditPageProps) {
   const { t } = useTranslation();
   const [selectedClip, setSelectedClip] = useState<AudioClip | VideoClip | null>(null);
   const [selectedClipType, setSelectedClipType] = useState<"audio" | "video" | null>(null);
@@ -34,21 +34,10 @@ function EditPage({ audioClips, videoClips, onAddMedia, onDeleteClip, onMoveClip
     );
   }, [audioClips, videoClips]);
 
-  // Remotion sync hook for playback
-  const {
-    playerRef,
-    currentTime,
-    isPlaying,
-    durationInFrames,
-    handlePlayPause,
-    handleStop,
-    handleSeek,
-    handleNextFrame,
-    handlePrevFrame,
-    handleGoToEnd,
-  } = useRemotionSync({ totalDuration, volume });
+  // Playback sync hook (HTML5 native)
+  const playback = usePlaybackSync({ totalDuration, volume, isActive: isTabActive });
 
-  // Phase 1: Thumbnails — instant via Tauri asset protocol (no file read, no IPC)
+  // Phase 1: Thumbnails — instant via Tauri asset protocol
   useEffect(() => {
     const thumbPaths = [...new Set(videoClips.map(c => c.thumbnail).filter(Boolean) as string[])];
     if (thumbPaths.length === 0) return;
@@ -71,7 +60,7 @@ function EditPage({ audioClips, videoClips, onAddMedia, onDeleteClip, onMoveClip
     return () => { cancelled = true; };
   }, [videoClips]);
 
-  // Phase 2: Audio — data URI via Rust (needed for Remotion playback)
+  // Phase 2: Audio — streaming URLs via local HTTP server
   useEffect(() => {
     const audioPaths = [...new Set(audioClips.map(c => c.path))];
     if (audioPaths.length === 0) return;
@@ -79,12 +68,8 @@ function EditPage({ audioClips, videoClips, onAddMedia, onDeleteClip, onMoveClip
     let cancelled = false;
     Promise.all(
       audioPaths.map(async (p) => {
-        try {
-          const dataUri = await loadAudioAsBlob(p);
-          return [p, dataUri] as const;
-        } catch {
-          return [p, ""] as const;
-        }
+        const url = await getStreamingUrl(p);
+        return [p, url] as const;
       })
     ).then((entries) => {
       if (!cancelled) {
@@ -94,7 +79,7 @@ function EditPage({ audioClips, videoClips, onAddMedia, onDeleteClip, onMoveClip
     return () => { cancelled = true; };
   }, [audioClips]);
 
-  // Phase 3: Video proxies — data URI via Rust (deferred, heaviest)
+  // Phase 3: Video — streaming URLs via local HTTP server (Range support, no memory bloat)
   useEffect(() => {
     const videoPaths = [...new Set(videoClips.map(c => c.path))];
     if (videoPaths.length === 0) return;
@@ -109,13 +94,9 @@ function EditPage({ audioClips, videoClips, onAddMedia, onDeleteClip, onMoveClip
     let cancelled = false;
     Promise.all(
       videoPaths.map(async (p) => {
-        const fileToLoad = proxyMap.get(p) || p;
-        try {
-          const dataUri = await loadFileAsDataUri(fileToLoad);
-          return [p, dataUri] as const;
-        } catch {
-          return [p, ""] as const;
-        }
+        const fileToStream = proxyMap.get(p) || p;
+        const url = await getStreamingUrl(fileToStream);
+        return [p, url] as const;
       })
     ).then((entries) => {
       if (!cancelled) {
@@ -124,13 +105,6 @@ function EditPage({ audioClips, videoClips, onAddMedia, onDeleteClip, onMoveClip
     });
     return () => { cancelled = true; };
   }, [videoClips]);
-
-  // Build composition props for Remotion
-  const compositionProps: PodcastCompositionProps = useMemo(() => ({
-    audioClips,
-    videoClips,
-    resolvedUrls,
-  }), [audioClips, videoClips, resolvedUrls]);
 
   // Delete selected clip with Delete key
   useEffect(() => {
@@ -154,11 +128,11 @@ function EditPage({ audioClips, videoClips, onAddMedia, onDeleteClip, onMoveClip
   }, [audioClips, videoClips]);
 
   const handlePlayClip = useCallback((clip: AudioClip | VideoClip) => {
-    handleSeek(clip.startTime);
-    if (!isPlaying) {
-      handlePlayPause();
+    playback.handleSeek(clip.startTime);
+    if (!playback.isPlaying) {
+      playback.handlePlayPause();
     }
-  }, [handleSeek, handlePlayPause, isPlaying]);
+  }, [playback]);
 
   const hasMedia = audioClips.length > 0 || videoClips.length > 0;
 
@@ -254,10 +228,11 @@ function EditPage({ audioClips, videoClips, onAddMedia, onDeleteClip, onMoveClip
           <div className="monitor-viewport">
             <div className="viewport-content">
               {hasMedia ? (
-                <RemotionPreview
-                  playerRef={playerRef}
-                  compositionProps={compositionProps}
-                  durationInFrames={durationInFrames}
+                <MediaPreview
+                  audioClips={audioClips}
+                  videoClips={videoClips}
+                  resolvedUrls={resolvedUrls}
+                  playback={playback}
                 />
               ) : (
                 <div className="viewport-placeholder">
@@ -268,7 +243,7 @@ function EditPage({ audioClips, videoClips, onAddMedia, onDeleteClip, onMoveClip
             </div>
 
             <div className="timecode-display">
-              <span className="timecode">{formatTimecode(currentTime)}</span>
+              <span className="timecode">{formatTimecode(playback.currentTime)}</span>
               <span className="timecode-separator">/</span>
               <span className="timecode total">{formatTimecode(totalDuration)}</span>
             </div>
@@ -277,27 +252,27 @@ function EditPage({ audioClips, videoClips, onAddMedia, onDeleteClip, onMoveClip
           {/* Transport Controls */}
           <div className="transport-controls">
             <div className="transport-left">
-              <button className="transport-btn" title={t('edit.goToStart')} onClick={handleStop}>
+              <button className="transport-btn" title={t('edit.goToStart')} onClick={playback.handleStop}>
                 |&lt;
               </button>
-              <button className="transport-btn" title={t('edit.previousFrame')} onClick={handlePrevFrame}>
+              <button className="transport-btn" title={t('edit.previousFrame')} onClick={playback.handlePrevFrame}>
                 &lt;
               </button>
             </div>
 
             <button
-              className={`transport-btn play-btn ${isPlaying ? "playing" : ""}`}
-              onClick={handlePlayPause}
-              title={isPlaying ? t('edit.pause') : t('edit.play')}
+              className={`transport-btn play-btn ${playback.isPlaying ? "playing" : ""}`}
+              onClick={playback.handlePlayPause}
+              title={playback.isPlaying ? t('edit.pause') : t('edit.play')}
             >
-              {isPlaying ? "||" : "\u25B6"}
+              {playback.isPlaying ? "||" : "\u25B6"}
             </button>
 
             <div className="transport-right">
-              <button className="transport-btn" title={t('edit.nextFrame')} onClick={handleNextFrame}>
+              <button className="transport-btn" title={t('edit.nextFrame')} onClick={playback.handleNextFrame}>
                 &gt;
               </button>
-              <button className="transport-btn" title={t('edit.goToEnd')} onClick={handleGoToEnd}>
+              <button className="transport-btn" title={t('edit.goToEnd')} onClick={playback.handleGoToEnd}>
                 &gt;|
               </button>
             </div>
@@ -362,9 +337,9 @@ function EditPage({ audioClips, videoClips, onAddMedia, onDeleteClip, onMoveClip
           onClipSelect={handleClipSelect}
           onPlayClip={handlePlayClip}
           onMoveClip={onMoveClip}
-          currentTime={currentTime}
-          isPlaying={isPlaying}
-          onSeek={handleSeek}
+          currentTime={playback.currentTime}
+          isPlaying={playback.isPlaying}
+          onSeek={playback.handleSeek}
         />
       </div>
     </div>

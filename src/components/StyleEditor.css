@@ -40,6 +40,19 @@
   white-space: nowrap;
 }
 
+/* Tab button group (reuses .toggle-btn from ScriptEditor) */
+.style-tabs {
+  display: flex;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.style-tabs .toggle-btn.unsaved::after {
+  content: "*";
+  margin-left: 2px;
+  color: var(--accent-primary);
+}
+
 .style-description {
   font-size: 0.7rem;
   color: var(--text-muted);

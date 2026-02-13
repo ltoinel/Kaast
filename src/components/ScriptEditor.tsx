@@ -1,14 +1,13 @@
 import { useState, useEffect, useCallback, useMemo, memo } from "react";
 import { useTranslation } from "react-i18next";
 import { marked } from "marked";
-import { safeInvoke, getTauriErrorMessage, loadAudioAsBlob } from "../utils/tauri";
-import { getStoredStylePrompt } from "./StyleEditor";
+import { safeInvoke, getTauriErrorMessage, getStreamingUrl } from "../utils/tauri";
+import { getStoredStylePrompt, getStoredVoiceStylePrompt } from "./StyleEditor";
 import { getCurrentProject } from "../utils/project";
 import { useMediaDuration } from "../hooks/useMediaDuration";
 import type { AudioClip } from "../types";
-import RemotionPreview from "./RemotionPreview";
-import { useRemotionSync } from "../hooks/useRemotionSync";
-import type { PodcastCompositionProps } from "../remotion/PodcastComposition";
+import MediaPreview from "./MediaPreview";
+import { usePlaybackSync } from "../hooks/usePlaybackSync";
 import "./ScriptEditor.css";
 
 declare global {
@@ -21,6 +20,7 @@ interface ScriptEditorProps {
   audioClips: AudioClip[];
   onAudioGenerated?: (audioPath: string, duration: number) => void;
   onOpenSettings?: () => void;
+  isTabActive?: boolean;
 }
 
 type ViewMode = "edit" | "preview" | "split";
@@ -68,8 +68,8 @@ const IconSparkles = () => (
   </svg>
 );
 
-function ScriptEditor({ audioClips, onAudioGenerated, onOpenSettings }: ScriptEditorProps) {
-  const { t } = useTranslation();
+function ScriptEditor({ audioClips, onAudioGenerated, onOpenSettings, isTabActive = true }: ScriptEditorProps) {
+  const { t, i18n } = useTranslation();
   const { probe } = useMediaDuration();
   const [script, setScript] = useState<string>("");
   const [url, setUrl] = useState<string>("");
@@ -87,15 +87,8 @@ function ScriptEditor({ audioClips, onAudioGenerated, onOpenSettings }: ScriptEd
     return Math.max(...audioClips.map(c => c.startTime + c.duration), 0);
   }, [audioClips]);
 
-  // Remotion sync hook for audio playback
-  const {
-    playerRef,
-    currentTime,
-    isPlaying,
-    durationInFrames,
-    handlePlayPause,
-    handleSeek,
-  } = useRemotionSync({ totalDuration, volume: 1 });
+  // Native playback sync hook
+  const playback = usePlaybackSync({ totalDuration, volume: 1, isActive: isTabActive });
 
   // Resolve audio clip paths to data URIs via Rust backend
   useEffect(() => {
@@ -105,8 +98,8 @@ function ScriptEditor({ audioClips, onAudioGenerated, onOpenSettings }: ScriptEd
     Promise.all(
       uniquePaths.map(async (p) => {
         try {
-          const dataUri = await loadAudioAsBlob(p);
-          return [p, dataUri] as const;
+          const url = await getStreamingUrl(p);
+          return [p, url] as const;
         } catch {
           return [p, ""] as const;
         }
@@ -117,13 +110,6 @@ function ScriptEditor({ audioClips, onAudioGenerated, onOpenSettings }: ScriptEd
     return () => { cancelled = true; };
   }, [audioClips]);
 
-  // Remotion composition props (audio only)
-  const compositionProps: PodcastCompositionProps = useMemo(() => ({
-    audioClips,
-    videoClips: [],
-    resolvedUrls,
-  }), [audioClips, resolvedUrls]);
-
   /** Format seconds as m:ss */
   const formatTime = (seconds: number): string => {
     const mins = Math.floor(seconds / 60);
@@ -132,8 +118,8 @@ function ScriptEditor({ audioClips, onAudioGenerated, onOpenSettings }: ScriptEd
   };
 
   const handleSeekInput = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    handleSeek(parseFloat(e.target.value));
-  }, [handleSeek]);
+    playback.handleSeek(parseFloat(e.target.value));
+  }, [playback]);
 
   useEffect(() => {
     loadScript();
@@ -226,6 +212,7 @@ function ScriptEditor({ audioClips, onAudioGenerated, onOpenSettings }: ScriptEd
         url: url.trim(),
         apiKey,
         stylePrompt,
+        language: i18n.language,
       });
 
       generatedScript = generatedScript.replace(/^```(?:markdown|md)?\s*\n?/, "").replace(/\n?```\s*$/, "");
@@ -293,6 +280,8 @@ function ScriptEditor({ audioClips, onAudioGenerated, onOpenSettings }: ScriptEd
         text: script,
         apiKey,
         outputPath,
+        language: i18n.language,
+        voiceStylePrompt: getStoredVoiceStylePrompt(),
       });
 
       setSuccess(t('script.audioGenerated', { path: resultPath }));
@@ -407,13 +396,15 @@ function ScriptEditor({ audioClips, onAudioGenerated, onOpenSettings }: ScriptEd
       {error && <div className="message error">{error}</div>}
       {success && <div className="message success">{success}</div>}
 
-      {/* Hidden Remotion Player for audio playback */}
+      {/* Hidden audio elements for playback */}
       {audioClips.length > 0 && totalDuration > 0 && (
-        <div style={{ position: "fixed", left: -9999, top: -9999, width: 1, height: 1, opacity: 0, pointerEvents: "none" }}>
-          <RemotionPreview
-            playerRef={playerRef}
-            compositionProps={compositionProps}
-            durationInFrames={durationInFrames}
+        <div style={{ position: "fixed", left: -9999, top: -9999, width: 0, height: 0, overflow: "hidden" }}>
+          <MediaPreview
+            audioClips={audioClips}
+            videoClips={[]}
+            resolvedUrls={resolvedUrls}
+            playback={playback}
+            audioOnly
           />
         </div>
       )}
@@ -423,10 +414,10 @@ function ScriptEditor({ audioClips, onAudioGenerated, onOpenSettings }: ScriptEd
         <div className="script-audio-player">
           <button
             className="audio-play-btn"
-            onClick={handlePlayPause}
+            onClick={playback.handlePlayPause}
             disabled={audioClips.length === 0}
           >
-            {isPlaying ? "\u23F8" : "\u25B6"}
+            {playback.isPlaying ? "\u23F8" : "\u25B6"}
           </button>
           <div className="audio-progress-wrapper">
             <input
@@ -435,12 +426,12 @@ function ScriptEditor({ audioClips, onAudioGenerated, onOpenSettings }: ScriptEd
               min="0"
               max={totalDuration || 0}
               step="0.1"
-              value={currentTime}
+              value={playback.currentTime}
               onChange={handleSeekInput}
             />
           </div>
           <span className="audio-time">
-            {formatTime(currentTime)} / {formatTime(totalDuration)}
+            {formatTime(playback.currentTime)} / {formatTime(totalDuration)}
           </span>
           <span className="audio-name">
             {audioClips[0]?.name}
