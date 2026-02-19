@@ -15,6 +15,8 @@ struct PexelsSearchResponse {
 
 #[derive(Deserialize)]
 struct PexelsVideo {
+    #[serde(default)]
+    duration: u32,
     video_files: Vec<PexelsVideoFile>,
 }
 
@@ -40,7 +42,7 @@ struct PexelsVideoFile {
 pub async fn search_and_download_pexels_video(
     api_key: String,
     query: String,
-    _min_duration: u32,
+    min_duration: u32,
     project_path: String,
     scene_index: u32,
 ) -> Result<String, String> {
@@ -62,14 +64,16 @@ pub async fn search_and_download_pexels_video(
         .build()
         .map_err(|e| format!("Error creating HTTP client: {}", e))?;
 
-    // Search Pexels API
+    // Search Pexels API — require videos at least as long as the scene
+    let min_dur_str = min_duration.to_string();
     let search_response = client
         .get("https://api.pexels.com/videos/search")
         .header("Authorization", &api_key)
         .query(&[
             ("query", query.as_str()),
-            ("per_page", "5"),
+            ("per_page", "15"),
             ("orientation", "landscape"),
+            ("min_duration", min_dur_str.as_str()),
         ])
         .send()
         .await
@@ -90,7 +94,7 @@ pub async fn search_and_download_pexels_video(
         return Err(format!("No video found on Pexels for: {}", query));
     }
 
-    let best_file = select_best_video_file(&pexels_data)
+    let best_file = select_best_video_file(&pexels_data, min_duration)
         .ok_or_else(|| "No suitable video file found".to_string())?;
 
     println!(
@@ -123,9 +127,23 @@ pub async fn search_and_download_pexels_video(
 }
 
 /// Select the best video file from Pexels results: prefer mp4, HD quality, highest resolution.
-fn select_best_video_file(pexels_data: &PexelsSearchResponse) -> Option<&PexelsVideoFile> {
-    pexels_data
+/// Videos shorter than `min_duration` are excluded when possible.
+fn select_best_video_file(pexels_data: &PexelsSearchResponse, min_duration: u32) -> Option<&PexelsVideoFile> {
+    // Prefer videos that are at least as long as the scene
+    let long_enough: Vec<&PexelsVideo> = pexels_data
         .videos
+        .iter()
+        .filter(|v| v.duration >= min_duration)
+        .collect();
+
+    // Fall back to all videos if none meet the duration requirement
+    let candidates: &[&PexelsVideo] = if long_enough.is_empty() {
+        &pexels_data.videos.iter().collect::<Vec<_>>()
+    } else {
+        &long_enough
+    };
+
+    candidates
         .iter()
         .flat_map(|v| v.video_files.iter())
         .filter(|f| {
@@ -145,8 +163,7 @@ fn select_best_video_file(pexels_data: &PexelsSearchResponse) -> Option<&PexelsV
         })
         .or_else(|| {
             // Fallback: take any file with highest resolution
-            pexels_data
-                .videos
+            candidates
                 .iter()
                 .flat_map(|v| v.video_files.iter())
                 .max_by_key(|f| f.width.unwrap_or(0))

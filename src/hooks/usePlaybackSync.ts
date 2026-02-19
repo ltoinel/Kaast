@@ -1,19 +1,22 @@
 /**
  * usePlaybackSync — Master clock for media playback.
  *
- * Two time sources:
- * - `timeRef`     (MutableRefObject) — updated on every rAF tick, used by
- *                  MediaPreview for frame-accurate media synchronisation.
- * - `currentTime` (React state)      — updated ~15 fps, used by UI components
- *                  (timecode display, timeline playhead) to avoid 60 fps
- *                  re-renders of the whole component tree.
+ * The PlaybackHandle is intentionally **stable during playback** (its reference
+ * only changes on play/pause, seek, stop, or volume change).  This prevents
+ * cascading re-renders from the App component down to heavy children like
+ * MediaPreview.
+ *
+ * UI components that need a frequently-updating display time (progress bar,
+ * timecode, timeline playhead) should use the companion `usePlaybackTime` hook
+ * which runs its own lightweight rAF loop (~15 fps) scoped to the consuming
+ * component.
  */
-import { useCallback, useRef, useState, useEffect } from "react";
+import { useCallback, useRef, useState, useEffect, useMemo } from "react";
 
 /** Step size (in seconds) used for single-frame advance / rewind. */
 const FRAME_STEP = 1 / 30;
 
-/** Minimum interval (ms) between React state updates for currentTime. */
+/** Minimum interval (ms) between React state updates for usePlaybackTime. */
 const UI_THROTTLE_MS = 66; // ~15 fps
 
 interface UsePlaybackSyncOptions {
@@ -26,7 +29,11 @@ interface UsePlaybackSyncOptions {
 export interface PlaybackHandle {
   /** Precise time ref — read this for media sync (no re-render). */
   timeRef: React.MutableRefObject<number>;
-  /** Throttled time for UI display (~15 fps re-renders). */
+  /**
+   * Snapshot of the current time, updated only on seek / stop.
+   * For smooth ~15 fps UI updates during playback, use the
+   * `usePlaybackTime` hook instead.
+   */
   currentTime: number;
   isPlaying: boolean;
   volume: number;
@@ -46,7 +53,6 @@ export function usePlaybackSync({ totalDuration, volume, isActive = true }: UseP
   const rafRef = useRef(0);
   const lastTsRef = useRef(0);
   const playingRef = useRef(false);
-  const lastUiUpdateRef = useRef(0);
 
   const stopClock = useCallback(() => {
     playingRef.current = false;
@@ -65,12 +71,6 @@ export function usePlaybackSync({ totalDuration, volume, isActive = true }: UseP
 
     timeRef.current = Math.min(timeRef.current + delta, totalDuration);
 
-    // Throttle React state updates for the UI
-    if (ts - lastUiUpdateRef.current >= UI_THROTTLE_MS) {
-      lastUiUpdateRef.current = ts;
-      setCurrentTime(timeRef.current);
-    }
-
     if (timeRef.current >= totalDuration) {
       stopClock();
       return;
@@ -81,7 +81,6 @@ export function usePlaybackSync({ totalDuration, volume, isActive = true }: UseP
   const startClock = useCallback(() => {
     playingRef.current = true;
     lastTsRef.current = 0;
-    lastUiUpdateRef.current = 0;
     setIsPlaying(true);
     rafRef.current = requestAnimationFrame(tick);
   }, [tick]);
@@ -122,7 +121,7 @@ export function usePlaybackSync({ totalDuration, volume, isActive = true }: UseP
 
   useEffect(() => () => { cancelAnimationFrame(rafRef.current); }, []);
 
-  return {
+  return useMemo<PlaybackHandle>(() => ({
     timeRef,
     currentTime,
     isPlaying,
@@ -133,5 +132,44 @@ export function usePlaybackSync({ totalDuration, volume, isActive = true }: UseP
     handleNextFrame,
     handlePrevFrame,
     handleGoToEnd,
-  };
+  }), [currentTime, isPlaying, volume, handlePlayPause, handleStop, handleSeek, handleNextFrame, handlePrevFrame, handleGoToEnd]);
+}
+
+/**
+ * usePlaybackTime — Provides a smooth ~15 fps display time for UI components.
+ *
+ * Runs its own lightweight rAF loop scoped to the consuming component,
+ * so only the component calling this hook re-renders at ~15 fps — not the
+ * entire tree.
+ *
+ * @param playback  The stable PlaybackHandle from usePlaybackSync.
+ * @param isActive  When false (e.g. tab is hidden), the rAF loop is paused
+ *                  to avoid unnecessary work.  Defaults to true.
+ */
+export function usePlaybackTime(playback: PlaybackHandle, isActive: boolean = true): number {
+  const [displayTime, setDisplayTime] = useState(playback.currentTime);
+
+  // Sync when the handle's currentTime changes (seek / stop events)
+  useEffect(() => {
+    setDisplayTime(playback.currentTime);
+  }, [playback.currentTime]);
+
+  // During playback, run a local rAF loop for smooth UI updates
+  useEffect(() => {
+    if (!playback.isPlaying || !isActive) return;
+
+    let rafId = 0;
+    let lastUpdate = 0;
+    const update = (ts: number) => {
+      if (ts - lastUpdate >= UI_THROTTLE_MS) {
+        lastUpdate = ts;
+        setDisplayTime(playback.timeRef.current);
+      }
+      rafId = requestAnimationFrame(update);
+    };
+    rafId = requestAnimationFrame(update);
+    return () => { cancelAnimationFrame(rafId); };
+  }, [playback.timeRef, playback.isPlaying, isActive]);
+
+  return displayTime;
 }

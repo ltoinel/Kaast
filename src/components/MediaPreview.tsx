@@ -21,10 +21,26 @@ interface MediaPreviewProps {
   playback: PlaybackHandle;
   /** When true the component renders only audio (no visible video). */
   audioOnly?: boolean;
+  /** When true the component renders only video (no audio elements). */
+  videoOnly?: boolean;
 }
 
-/** Maximum drift (in seconds) before we force-correct an element's currentTime. */
-const DRIFT_THRESHOLD = 0.3;
+/** Maximum drift (in seconds) before we force-correct a video element's currentTime. */
+const VIDEO_DRIFT_THRESHOLD = 0.3;
+
+/** Audio drift below this value is considered in sync — playbackRate stays at 1.0. */
+const AUDIO_SYNC_TOLERANCE = 0.08;
+
+/** Audio drift above this value triggers a hard seek (e.g. after manual seek or clip change). */
+const AUDIO_HARD_SEEK_THRESHOLD = 1.0;
+
+/**
+ * Maximum playback rate adjustment for gradual audio drift correction (±5%).
+ * Instead of seeking (which causes audible glitches), we slightly speed up
+ * or slow down the audio to smoothly catch up with the master clock.
+ * The actual correction is proportional to drift magnitude.
+ */
+const AUDIO_MAX_RATE_CORRECTION = 0.05;
 
 /** Minimum readyState to allow seeking (HAVE_METADATA). */
 const READY_FOR_SEEK = 1;
@@ -80,7 +96,19 @@ function findNextVideoClip(videoClips: VideoClip[], current: VideoClip): VideoCl
   return best;
 }
 
-function MediaPreview({ audioClips, videoClips, resolvedUrls, playback, audioOnly }: MediaPreviewProps) {
+/**
+ * Memoised audio element that never re-renders after mount.
+ * Uses a stable `onRef` callback so the parent's audioRefs Map stays consistent
+ * across React commits (no null→el flicker from inline ref callbacks).
+ */
+const AudioElement = memo(({ clipId, onRef }: {
+  clipId: string;
+  onRef: (id: string, el: HTMLAudioElement | null) => void;
+}) => (
+  <audio ref={(el) => onRef(clipId, el)} preload="auto" />
+));
+
+function MediaPreview({ audioClips, videoClips, resolvedUrls, playback, audioOnly, videoOnly }: MediaPreviewProps) {
   // ── Double-buffered video refs ──────────────────────────────────
   const videoARef = useRef<HTMLVideoElement>(null);
   const videoBRef = useRef<HTMLVideoElement>(null);
@@ -95,6 +123,12 @@ function MediaPreview({ audioClips, videoClips, resolvedUrls, playback, audioOnl
 
   const audioRefs = useRef<Map<string, HTMLAudioElement>>(new Map());
   const syncRafRef = useRef(0);
+
+  /** Stable callback for AudioElement refs — avoids ref churn on re-renders. */
+  const setAudioRef = useCallback((id: string, el: HTMLAudioElement | null) => {
+    if (el) audioRefs.current.set(id, el);
+    else audioRefs.current.delete(id);
+  }, []);
 
   // ── Refs for latest props (avoids stale closures in rAF loop) ──
   const videoClipsRef = useRef(videoClips);
@@ -223,13 +257,13 @@ function MediaPreview({ audioClips, videoClips, resolvedUrls, playback, audioOnl
     if (active.readyState < READY_FOR_SEEK) return;
 
     const offset = t - currentClip.startTime;
-    if (Math.abs(active.currentTime - offset) > DRIFT_THRESHOLD) {
+    if (Math.abs(active.currentTime - offset) > VIDEO_DRIFT_THRESHOLD) {
       // Only seek if the target position is buffered to avoid micro-freeze
       if (hasBufferAt(active, offset)) {
         active.currentTime = offset;
       }
     }
-    active.volume = volumeRef.current;
+    if (active.volume !== volumeRef.current) active.volume = volumeRef.current;
 
     // ── Preload next clip when approaching end ────────────────────
     const timeLeft = (currentClip.startTime + currentClip.duration) - t;
@@ -249,50 +283,73 @@ function MediaPreview({ audioClips, videoClips, resolvedUrls, playback, audioOnl
 
   // ── Imperative sync: audio ─────────────────────────────────────
   const syncAudio = useCallback(() => {
+    if (videoOnly) return;
     const clips = audioClipsRef.current;
-    const urls = resolvedUrlsRef.current;
     const t = playback.timeRef.current;
     const playing = isPlayingRef.current;
 
     for (const clip of clips) {
       const el = audioRefs.current.get(clip.id);
       if (!el) continue;
-      const src = urls[clip.path];
-      if (!src) continue;
-
-      // Assign src once
-      if (!el.src || el.src === "about:blank" || el.src === window.location.href) {
-        el.src = src;
-      }
+      if (!el.src || el.src === "about:blank" || el.src === window.location.href) continue;
 
       const inRange = t >= clip.startTime && t < clip.startTime + clip.duration;
       if (inRange) {
         const offset = t - clip.startTime;
-        if (Math.abs(el.currentTime - offset) > DRIFT_THRESHOLD) {
-          // Only seek if target is buffered
+        const drift = el.currentTime - offset;
+        const absDrift = Math.abs(drift);
+
+        // Compute target playback rate based on drift magnitude
+        let targetRate = 1.0;
+        if (absDrift > AUDIO_HARD_SEEK_THRESHOLD) {
+          // Large drift (manual seek or clip change) — hard seek required
           if (hasBufferAt(el, offset)) {
             el.currentTime = offset;
           }
+        } else if (absDrift > AUDIO_SYNC_TOLERANCE) {
+          // Proportional drift correction — gradually adjust playback rate.
+          // The correction scales linearly with drift: small drift → tiny correction
+          // (imperceptible), large drift → up to ±AUDIO_MAX_RATE_CORRECTION.
+          // drift > 0 → audio is ahead → slow down; drift < 0 → audio is behind → speed up
+          const correction = Math.min(absDrift / AUDIO_HARD_SEEK_THRESHOLD, 1) * AUDIO_MAX_RATE_CORRECTION;
+          targetRate = drift > 0 ? 1.0 - correction : 1.0 + correction;
         }
-        el.volume = volumeRef.current;
+
+        // Only touch playbackRate when it actually changes (avoids browser overhead)
+        if (el.playbackRate !== targetRate) el.playbackRate = targetRate;
+        if (el.volume !== volumeRef.current) el.volume = volumeRef.current;
         if (playing && el.paused) el.play().catch(() => {});
         if (!playing && !el.paused) el.pause();
       } else {
         if (!el.paused) el.pause();
+        if (el.playbackRate !== 1.0) el.playbackRate = 1.0;
       }
     }
-  }, [playback.timeRef]);
+  }, [videoOnly, playback.timeRef]);
+
+  // ── Assign audio src when URLs or clips change (not in 60fps loop) ──
+  useEffect(() => {
+    if (videoOnly) return;
+    const urls = resolvedUrlsRef.current;
+    for (const clip of audioClipsRef.current) {
+      const el = audioRefs.current.get(clip.id);
+      const src = urls[clip.path];
+      if (el && src && (!el.src || el.src === "about:blank" || el.src === window.location.href)) {
+        el.src = src;
+      }
+    }
+  }, [videoOnly, resolvedUrls, audioClips]);
 
   // ── rAF sync loop: runs ONLY while playing ────────────────────
   useEffect(() => {
     if (!playback.isPlaying) {
       // Stopped → one final sync pass so elements stop at the right position
       syncVideo();
-      syncAudio();
+      if (!videoOnly) syncAudio();
       // Pause all media
       const active = getActiveVideo();
       if (active && !active.paused) active.pause();
-      audioRefs.current.forEach((el) => { if (!el.paused) el.pause(); });
+      if (!videoOnly) audioRefs.current.forEach((el) => { if (!el.paused) el.pause(); });
       return;
     }
 
@@ -301,23 +358,23 @@ function MediaPreview({ audioClips, videoClips, resolvedUrls, playback, audioOnl
     if (active && activeSrcRef.current && !videoLoadingRef.current && active.paused) {
       active.play().catch(() => {});
     }
-    syncAudio();
+    if (!videoOnly) syncAudio();
 
     const syncLoop = () => {
       syncVideo();
-      syncAudio();
+      if (!videoOnly) syncAudio();
       syncRafRef.current = requestAnimationFrame(syncLoop);
     };
     syncRafRef.current = requestAnimationFrame(syncLoop);
 
     return () => { cancelAnimationFrame(syncRafRef.current); };
-  }, [playback.isPlaying, syncVideo, syncAudio, getActiveVideo]);
+  }, [playback.isPlaying, videoOnly, syncVideo, syncAudio, getActiveVideo]);
 
   // ── Sync once when resolvedUrls or clips change (initial load) ─
   useEffect(() => {
     syncVideo();
-    syncAudio();
-  }, [resolvedUrls, videoClips, audioClips, syncVideo, syncAudio]);
+    if (!videoOnly) syncAudio();
+  }, [resolvedUrls, videoClips, audioClips, videoOnly, syncVideo, syncAudio]);
 
   return (
     <>
@@ -338,15 +395,8 @@ function MediaPreview({ audioClips, videoClips, resolvedUrls, playback, audioOnl
         </div>
       )}
 
-      {audioClips.map((clip) => (
-        <audio
-          key={clip.id}
-          ref={(el) => {
-            if (el) audioRefs.current.set(clip.id, el);
-            else audioRefs.current.delete(clip.id);
-          }}
-          preload="auto"
-        />
+      {!videoOnly && audioClips.map((clip) => (
+        <AudioElement key={clip.id} clipId={clip.id} onRef={setAudioRef} />
       ))}
     </>
   );

@@ -172,7 +172,7 @@
   "scenes.feed": "Feed",
   "scenes.feeding": "Feed {{current}}/{{total}}",
   "scenes.downloading": "Downloading...",
-  "scenes.produce": "Produceren",
+  "scenes.produce": "Samenvoegen",
   "scenes.assembling": "Samenstellen...",
   "scenes.errorNoPexelsKey": "Pexels API key not configured. Go to settings.",
   "scenes.deleteVideo": "Delete video",

@@ -40,17 +40,45 @@
   white-space: nowrap;
 }
 
-/* Tab button group (reuses .toggle-btn from ScriptEditor) */
+/* Tabs */
 .style-tabs {
   display: flex;
-  border-radius: 4px;
-  overflow: hidden;
+  gap: 2px;
+  border-bottom: 1px solid var(--border-subtle);
+  margin-bottom: -1px;
 }
 
-.style-tabs .toggle-btn.unsaved::after {
+.style-tab {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 14px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-bottom: 2px solid transparent;
+  border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: color 0.15s ease, border-color 0.15s ease, background 0.15s ease;
+}
+
+.style-tab:hover {
+  color: var(--text-primary);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.style-tab.active {
+  color: var(--accent-primary);
+  border-bottom-color: var(--accent-primary);
+  background: rgba(224, 112, 32, 0.06);
+}
+
+.style-tab.unsaved::after {
   content: "*";
   margin-left: 2px;
-  color: var(--accent-primary);
+  color: var(--accent-warning);
 }
 
 .style-description {

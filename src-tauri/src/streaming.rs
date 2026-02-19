@@ -11,7 +11,7 @@ use axum::body::Body;
 use axum::extract::Query;
 use axum::http::{header, HeaderMap, StatusCode};
 use axum::response::{IntoResponse, Response};
-use axum::routing::get;
+use axum::routing::{get, MethodRouter};
 use axum::Router;
 use serde::Deserialize;
 use tokio::io::{AsyncReadExt, AsyncSeekExt};
@@ -60,7 +60,10 @@ pub fn start_streaming_server() -> u16 {
         rt.block_on(async move {
             let listener = tokio::net::TcpListener::from_std(std_listener)
                 .expect("Failed to convert TcpListener to async");
-            let app = Router::new().route("/stream", get(handle_stream));
+            let stream_handler: MethodRouter = get(handle_stream)
+                .head(handle_stream)
+                .options(handle_preflight);
+            let app = Router::new().route("/stream", stream_handler);
             axum::serve(listener, app).await.ok();
         });
     });
@@ -89,6 +92,13 @@ async fn handle_stream(Query(params): Query<StreamParams>, headers: HeaderMap) -
         Ok(resp) => resp,
         Err(msg) => error_response(StatusCode::INTERNAL_SERVER_ERROR, msg),
     }
+}
+
+/// Handle OPTIONS preflight requests for CORS.
+async fn handle_preflight() -> Response {
+    let mut resp = StatusCode::NO_CONTENT.into_response();
+    apply_cors_headers(resp.headers_mut());
+    resp
 }
 
 /// Pick the streaming chunk size based on content type.
@@ -227,19 +237,26 @@ fn apply_cors_headers(h: &mut axum::http::HeaderMap) {
         "*".parse().unwrap(),
     );
     h.insert(
+        header::ACCESS_CONTROL_ALLOW_METHODS,
+        "GET, HEAD, OPTIONS".parse().unwrap(),
+    );
+    h.insert(
+        header::ACCESS_CONTROL_ALLOW_HEADERS,
+        "Range, Content-Type".parse().unwrap(),
+    );
+    h.insert(
         header::ACCESS_CONTROL_EXPOSE_HEADERS,
-        "Content-Range, Content-Length, Accept-Ranges"
-            .parse()
-            .unwrap(),
+        "Content-Range, Content-Length, Accept-Ranges".parse().unwrap(),
+    );
+    h.insert(
+        header::ACCESS_CONTROL_MAX_AGE,
+        "86400".parse().unwrap(),
     );
 }
 
 /// Build an error response with CORS headers.
 fn error_response(status: StatusCode, message: String) -> Response {
     let mut resp = (status, message).into_response();
-    resp.headers_mut().insert(
-        header::ACCESS_CONTROL_ALLOW_ORIGIN,
-        "*".parse().unwrap(),
-    );
+    apply_cors_headers(resp.headers_mut());
     resp
 }

@@ -192,153 +192,140 @@ function PublishPage({ audioClips, videoClips, projectPath, projectName }: Publi
       </div>
 
       <div className="publish-content">
-        {/* Summary */}
-        <div className="publish-section">
-          <h3>{t("publish.summaryTitle")}</h3>
-          <div className="publish-summary">
-            <div className="summary-item">
-              <span className="summary-label">{t("publish.videoClips")}</span>
-              <span className="summary-value">{videoClips.length}</span>
+        {/* Left column — Settings */}
+        <div className="publish-col-left">
+          {/* Format */}
+          <div className="publish-section">
+            <h3>{t("publish.formatTitle")}</h3>
+            <div className="format-options">
+              {formatOptions.map(opt => (
+                <label
+                  key={opt.value}
+                  className={`format-option ${format === opt.value ? "selected" : ""}`}
+                >
+                  <input
+                    type="radio"
+                    name="format"
+                    value={opt.value}
+                    checked={format === opt.value}
+                    onChange={() => setFormat(opt.value)}
+                    disabled={isExporting}
+                  />
+                  <div className="format-info">
+                    <span className="format-label">{opt.label}</span>
+                    <span className="format-desc">{opt.desc}</span>
+                  </div>
+                </label>
+              ))}
             </div>
-            <div className="summary-item">
-              <span className="summary-label">{t("publish.audioClips")}</span>
-              <span className="summary-value">{audioClips.length}</span>
+          </div>
+
+          {/* Quality */}
+          <div className="publish-section">
+            <h3>{t("publish.qualityTitle")}</h3>
+            <div className="quality-options">
+              {qualityOptions.map(opt => (
+                <label
+                  key={opt.value}
+                  className={`quality-option ${quality === opt.value ? "selected" : ""}`}
+                >
+                  <input
+                    type="radio"
+                    name="quality"
+                    value={opt.value}
+                    checked={quality === opt.value}
+                    onChange={() => setQuality(opt.value)}
+                    disabled={isExporting}
+                  />
+                  <div className="quality-info">
+                    <span className="quality-label">{opt.label}</span>
+                    <span className="quality-desc">{opt.desc}</span>
+                  </div>
+                </label>
+              ))}
             </div>
-            <div className="summary-item">
-              <span className="summary-label">{t("publish.totalDuration")}</span>
-              <span className="summary-value">{formatTimecode(totalDuration)}</span>
+          </div>
+        </div>
+
+        {/* Right column — Output */}
+        <div className="publish-col-right">
+          {/* Output path */}
+          <div className="publish-section">
+            <h3>{t("publish.outputTitle")}</h3>
+            <div className="output-path">
+              <span className="output-path-value">
+                {projectPath ? `${projectPath}/export/` : t("publish.chooseOnExport")}
+              </span>
+              {projectPath && (
+                <button className="btn btn-sm" onClick={handleOpenFolder}>
+                  {t("publish.openFolder")}
+                </button>
+              )}
             </div>
-            <div className="summary-item">
-              <span className="summary-label">{t("publish.outputFormat")}</span>
-              <span className="summary-value">{t(FORMAT_CONFIGS[format].labelKey)}</span>
+          </div>
+
+          {/* Estimated size */}
+          {totalDuration > 0 && (
+            <div className="publish-section">
+              <h3>{t("publish.estimatedSize")}</h3>
+              <div className="estimated-size-display">
+                <span className="estimated-size-value">~ {formatFileSize(estimatedSizeBytes)}</span>
+              </div>
             </div>
-            {totalDuration > 0 && (
-              <div className="summary-item">
-                <span className="summary-label">{t("publish.estimatedSize")}</span>
-                <span className="summary-value">~ {formatFileSize(estimatedSizeBytes)}</span>
+          )}
+
+          {/* Export Button + Progress */}
+          <div className="publish-actions">
+            <button
+              className="btn btn-primary btn-export"
+              onClick={handleExport}
+              disabled={isExporting || !hasMedia}
+            >
+              {isExporting ? (
+                <>
+                  <span className="spinner"></span>
+                  {progressText}
+                </>
+              ) : (
+                t("publish.exportButton")
+              )}
+            </button>
+
+            {isExporting && (
+              <div className="export-progress">
+                <div className="export-progress-bar">
+                  <div
+                    className="export-progress-fill"
+                    style={{ width: `${progressPercent}%` }}
+                  />
+                </div>
+                <span className="export-progress-label">{progressPercent}%</span>
               </div>
             )}
           </div>
-        </div>
 
-        {/* Format */}
-        <div className="publish-section">
-          <h3>{t("publish.formatTitle")}</h3>
-          <div className="format-options">
-            {formatOptions.map(opt => (
-              <label
-                key={opt.value}
-                className={`format-option ${format === opt.value ? "selected" : ""}`}
-              >
-                <input
-                  type="radio"
-                  name="format"
-                  value={opt.value}
-                  checked={format === opt.value}
-                  onChange={() => setFormat(opt.value)}
-                  disabled={isExporting}
-                />
-                <div className="format-info">
-                  <span className="format-label">{opt.label}</span>
-                  <span className="format-desc">{opt.desc}</span>
-                </div>
-              </label>
-            ))}
-          </div>
-        </div>
+          {/* Error */}
+          {error && (
+            <div className="publish-error">
+              {error}
+            </div>
+          )}
 
-        {/* Quality */}
-        <div className="publish-section">
-          <h3>{t("publish.qualityTitle")}</h3>
-          <div className="quality-options">
-            {qualityOptions.map(opt => (
-              <label
-                key={opt.value}
-                className={`quality-option ${quality === opt.value ? "selected" : ""}`}
-              >
-                <input
-                  type="radio"
-                  name="quality"
-                  value={opt.value}
-                  checked={quality === opt.value}
-                  onChange={() => setQuality(opt.value)}
-                  disabled={isExporting}
-                />
-                <div className="quality-info">
-                  <span className="quality-label">{opt.label}</span>
-                  <span className="quality-desc">{opt.desc}</span>
-                </div>
-              </label>
-            ))}
-          </div>
-        </div>
+          {/* Success */}
+          {exportResult && (
+            <div className="publish-success">
+              {exportResult}
+            </div>
+          )}
 
-        {/* Output */}
-        <div className="publish-section">
-          <h3>{t("publish.outputTitle")}</h3>
-          <div className="output-path">
-            <span className="output-path-value">
-              {projectPath ? `${projectPath}/export/` : t("publish.chooseOnExport")}
-            </span>
-            {projectPath && (
-              <button className="btn btn-sm" onClick={handleOpenFolder}>
-                {t("publish.openFolder")}
-              </button>
-            )}
-          </div>
-        </div>
-
-        {/* Export Button + Progress */}
-        <div className="publish-actions">
-          <button
-            className="btn btn-primary btn-export"
-            onClick={handleExport}
-            disabled={isExporting || !hasMedia}
-          >
-            {isExporting ? (
-              <>
-                <span className="spinner"></span>
-                {progressText}
-              </>
-            ) : (
-              t("publish.exportButton")
-            )}
-          </button>
-
-          {isExporting && (
-            <div className="export-progress">
-              <div className="export-progress-bar">
-                <div
-                  className="export-progress-fill"
-                  style={{ width: `${progressPercent}%` }}
-                />
-              </div>
-              <span className="export-progress-label">{progressPercent}%</span>
+          {/* Empty state */}
+          {!hasMedia && (
+            <div className="publish-empty">
+              <p>{t("publish.noMedia")}</p>
+              <p className="publish-empty-hint">{t("publish.noMediaHint")}</p>
             </div>
           )}
         </div>
-
-        {/* Error */}
-        {error && (
-          <div className="publish-error">
-            {error}
-          </div>
-        )}
-
-        {/* Success */}
-        {exportResult && (
-          <div className="publish-success">
-            {exportResult}
-          </div>
-        )}
-
-        {/* Empty state */}
-        {!hasMedia && (
-          <div className="publish-empty">
-            <p>{t("publish.noMedia")}</p>
-            <p className="publish-empty-hint">{t("publish.noMediaHint")}</p>
-          </div>
-        )}
       </div>
     </div>
   );

@@ -1,7 +1,7 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import "./App.css";
-import { isTauriAvailable } from "./utils/tauri";
+import { isTauriAvailable, getStreamingUrl, convertToAssetUrl, basename } from "./utils/tauri";
 import { Project, setCurrentProject, getCurrentProject } from "./utils/project";
 import ProjectStartup from "./components/ProjectStartup";
 import StyleEditor from "./components/StyleEditor";
@@ -13,8 +13,13 @@ import PublishPage from "./components/PublishPage";
 import Settings from "./components/Settings";
 import DebugConsole from "./components/DebugConsole";
 import { useMediaDuration } from "./hooks/useMediaDuration";
+import { usePlaybackSync } from "./hooks/usePlaybackSync";
+import MediaPreview from "./components/MediaPreview";
 
 type TabType = "style" | "editor" | "scenes" | "edit" | "publish" | "settings";
+
+/** Stable empty array to avoid defeating React.memo on MediaPreview. */
+const EMPTY_VIDEO_CLIPS: VideoClip[] = [];
 
 // SVG Icon components
 const IconPlus = () => (
@@ -84,6 +89,11 @@ const IconGear = () => (
 function App() {
   const { t } = useTranslation();
   const { probe } = useMediaDuration();
+
+  // ── Shared playback for Script, Scenes & Edit tabs ──────────────
+  const [volume, setVolume] = useState<number>(0.8);
+  const [resolvedUrls, setResolvedUrls] = useState<Record<string, string>>({});
+
   const [currentProject, setProject] = useState<Project | null>(null);
   const [activeTab, setActiveTab] = useState<TabType>("editor");
   const [audioClips, setAudioClips] = useState<AudioClip[]>([]);
@@ -101,6 +111,95 @@ function App() {
       return new Set(prev).add(activeTab);
     });
   }, [activeTab]);
+
+  // Total duration covering both audio and video clips
+  const totalDuration = useMemo(() => {
+    return Math.max(
+      ...audioClips.map(c => c.startTime + c.duration),
+      ...videoClips.map(c => c.startTime + c.duration),
+      0
+    );
+  }, [audioClips, videoClips]);
+
+  // Single shared playback instance — active on Script, Scenes & Edit tabs
+  const sharedPlayback = usePlaybackSync({
+    totalDuration,
+    volume,
+    isActive: activeTab === "editor" || activeTab === "scenes" || activeTab === "edit",
+  });
+
+  // Resolve thumbnail paths via Tauri asset protocol (instant)
+  useEffect(() => {
+    const thumbPaths = [...new Set(videoClips.map(c => c.thumbnail).filter(Boolean) as string[])];
+    if (thumbPaths.length === 0) return;
+
+    let cancelled = false;
+    Promise.all(
+      thumbPaths.map(async (p) => {
+        try {
+          const url = await convertToAssetUrl(p);
+          return [p, url] as const;
+        } catch {
+          return [p, ""] as const;
+        }
+      })
+    ).then((entries) => {
+      if (!cancelled) setResolvedUrls(prev => ({ ...prev, ...Object.fromEntries(entries) }));
+    });
+    return () => { cancelled = true; };
+  }, [videoClips]);
+
+  // Resolve audio clip paths to streaming URLs
+  useEffect(() => {
+    const audioPaths = [...new Set(audioClips.map(c => c.path))];
+    if (audioPaths.length === 0) {
+      setResolvedUrls(prev => Object.keys(prev).length === 0 ? prev : {});
+      return;
+    }
+    let cancelled = false;
+    Promise.all(
+      audioPaths.map(async (p) => {
+        try {
+          const url = await getStreamingUrl(p);
+          return [p, url] as const;
+        } catch {
+          return [p, ""] as const;
+        }
+      })
+    ).then((entries) => {
+      if (!cancelled) setResolvedUrls(prev => ({ ...prev, ...Object.fromEntries(entries) }));
+    });
+    return () => { cancelled = true; };
+  }, [audioClips]);
+
+  // Resolve video clip paths to streaming URLs (using proxy when available)
+  useEffect(() => {
+    const videoPaths = [...new Set(videoClips.map(c => c.path))];
+    if (videoPaths.length === 0) return;
+
+    const proxyMap = new Map<string, string>();
+    for (const c of videoClips) {
+      if (c.proxyPath && !proxyMap.has(c.path)) {
+        proxyMap.set(c.path, c.proxyPath);
+      }
+    }
+
+    let cancelled = false;
+    Promise.all(
+      videoPaths.map(async (p) => {
+        try {
+          const fileToStream = proxyMap.get(p) || p;
+          const url = await getStreamingUrl(fileToStream);
+          return [p, url] as const;
+        } catch {
+          return [p, ""] as const;
+        }
+      })
+    ).then((entries) => {
+      if (!cancelled) setResolvedUrls(prev => ({ ...prev, ...Object.fromEntries(entries) }));
+    });
+    return () => { cancelled = true; };
+  }, [videoClips]);
 
   // Load audio files from project directory
   const loadProjectAudioFiles = useCallback(async (projectPath: string) => {
@@ -231,7 +330,7 @@ function App() {
   const handleAudioGenerated = (audioPath: string, duration: number) => {
     const newClip: AudioClip = {
       id: `audio_${Date.now()}`,
-      name: audioPath.split("/").pop() || "Podcast",
+      name: basename(audioPath) || "Podcast",
       path: audioPath,
       duration: duration,
       startTime: 0,
@@ -264,7 +363,7 @@ function App() {
     setActiveTab("edit");
   }, []);
 
-  const handleAddMedia = async () => {
+  const handleAddMedia = useCallback(async () => {
     try {
       const { open } = await import("@tauri-apps/plugin-dialog");
       const files = await open({
@@ -278,7 +377,7 @@ function App() {
 
       if (files && Array.isArray(files)) {
         for (const file of files) {
-          const fileName = file.split("/").pop() || "Media";
+          const fileName = basename(file) || "Media";
           const ext = fileName.split(".").pop()?.toLowerCase() || "";
           const { duration: realDuration } = await probe(file);
 
@@ -306,7 +405,7 @@ function App() {
     } catch (error) {
       console.error("Media import error:", error);
     }
-  };
+  }, [t, probe, videoClips, audioClips]);
 
   if (showStartup) {
     return <ProjectStartup onProjectReady={handleProjectReady} />;
@@ -394,6 +493,19 @@ function App() {
           <span className="project-path">{currentProject?.path}</span>
         </header>
 
+        {/* Shared audio playback — single hidden MediaPreview for all tabs */}
+        {audioClips.length > 0 && totalDuration > 0 && (
+          <div style={{ position: "fixed", left: -9999, top: -9999, width: 0, height: 0, overflow: "hidden" }}>
+            <MediaPreview
+              audioClips={audioClips}
+              videoClips={EMPTY_VIDEO_CLIPS}
+              resolvedUrls={resolvedUrls}
+              playback={sharedPlayback}
+              audioOnly
+            />
+          </div>
+        )}
+
         {/* Tab Content — CSS-based visibility with lazy mounting */}
         <div className="tab-content">
           <div className={`tab-panel ${activeTab !== "style" ? "tab-panel-hidden" : ""}`}>
@@ -406,7 +518,8 @@ function App() {
                 audioClips={audioClips}
                 onAudioGenerated={handleAudioGenerated}
                 onOpenSettings={handleOpenSettings}
-                isTabActive={activeTab === "editor"}
+                playback={sharedPlayback}
+                isActive={activeTab === "editor"}
               />
             )}
           </div>
@@ -418,7 +531,8 @@ function App() {
                 projectPath={currentProject?.path}
                 onOpenSettings={handleOpenSettings}
                 onProduceToTimeline={handleProduceToTimeline}
-                isTabActive={activeTab === "scenes"}
+                playback={sharedPlayback}
+                isActive={activeTab === "scenes"}
               />
             )}
           </div>
@@ -433,6 +547,10 @@ function App() {
                 onMoveClip={handleMoveClip}
                 projectPath={currentProject?.path}
                 isTabActive={activeTab === "edit"}
+                playback={sharedPlayback}
+                resolvedUrls={resolvedUrls}
+                volume={volume}
+                onVolumeChange={setVolume}
               />
             )}
           </div>

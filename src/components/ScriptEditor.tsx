@@ -1,13 +1,14 @@
 import { useState, useEffect, useCallback, useMemo, memo } from "react";
 import { useTranslation } from "react-i18next";
 import { marked } from "marked";
-import { safeInvoke, getTauriErrorMessage, getStreamingUrl } from "../utils/tauri";
+import { safeInvoke, getTauriErrorMessage } from "../utils/tauri";
 import { getStoredStylePrompt, getStoredVoiceStylePrompt } from "./StyleEditor";
 import { getCurrentProject } from "../utils/project";
 import { useMediaDuration } from "../hooks/useMediaDuration";
+import { formatTime } from "../utils/timecode";
 import type { AudioClip } from "../types";
-import MediaPreview from "./MediaPreview";
-import { usePlaybackSync } from "../hooks/usePlaybackSync";
+import type { PlaybackHandle } from "../hooks/usePlaybackSync";
+import { usePlaybackTime } from "../hooks/usePlaybackSync";
 import "./ScriptEditor.css";
 
 declare global {
@@ -20,7 +21,8 @@ interface ScriptEditorProps {
   audioClips: AudioClip[];
   onAudioGenerated?: (audioPath: string, duration: number) => void;
   onOpenSettings?: () => void;
-  isTabActive?: boolean;
+  playback: PlaybackHandle;
+  isActive?: boolean;
 }
 
 type ViewMode = "edit" | "preview" | "split";
@@ -68,9 +70,10 @@ const IconSparkles = () => (
   </svg>
 );
 
-function ScriptEditor({ audioClips, onAudioGenerated, onOpenSettings, isTabActive = true }: ScriptEditorProps) {
+function ScriptEditor({ audioClips, onAudioGenerated, onOpenSettings, playback, isActive = true }: ScriptEditorProps) {
   const { t, i18n } = useTranslation();
   const { probe } = useMediaDuration();
+  const currentTime = usePlaybackTime(playback, isActive);
   const [script, setScript] = useState<string>("");
   const [url, setUrl] = useState<string>("");
   const [isGenerating, setIsGenerating] = useState<boolean>(false);
@@ -80,42 +83,11 @@ function ScriptEditor({ audioClips, onAudioGenerated, onOpenSettings, isTabActiv
   const [lastSaved, setLastSaved] = useState<string>("");
   const [viewMode, setViewMode] = useState<ViewMode>("split");
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState<boolean>(false);
-  const [resolvedUrls, setResolvedUrls] = useState<Record<string, string>>({});
 
-  // Total audio duration
+  // Total audio duration (for UI display only — playback is managed by App)
   const totalDuration = useMemo(() => {
     return Math.max(...audioClips.map(c => c.startTime + c.duration), 0);
   }, [audioClips]);
-
-  // Native playback sync hook
-  const playback = usePlaybackSync({ totalDuration, volume: 1, isActive: isTabActive });
-
-  // Resolve audio clip paths to data URIs via Rust backend
-  useEffect(() => {
-    const paths = audioClips.map(c => c.path);
-    const uniquePaths = [...new Set(paths)];
-    let cancelled = false;
-    Promise.all(
-      uniquePaths.map(async (p) => {
-        try {
-          const url = await getStreamingUrl(p);
-          return [p, url] as const;
-        } catch {
-          return [p, ""] as const;
-        }
-      })
-    ).then((entries) => {
-      if (!cancelled) setResolvedUrls(Object.fromEntries(entries));
-    });
-    return () => { cancelled = true; };
-  }, [audioClips]);
-
-  /** Format seconds as m:ss */
-  const formatTime = (seconds: number): string => {
-    const mins = Math.floor(seconds / 60);
-    const secs = Math.floor(seconds % 60);
-    return `${mins}:${secs.toString().padStart(2, "0")}`;
-  };
 
   const handleSeekInput = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     playback.handleSeek(parseFloat(e.target.value));
@@ -396,19 +368,6 @@ function ScriptEditor({ audioClips, onAudioGenerated, onOpenSettings, isTabActiv
       {error && <div className="message error">{error}</div>}
       {success && <div className="message success">{success}</div>}
 
-      {/* Hidden audio elements for playback */}
-      {audioClips.length > 0 && totalDuration > 0 && (
-        <div style={{ position: "fixed", left: -9999, top: -9999, width: 0, height: 0, overflow: "hidden" }}>
-          <MediaPreview
-            audioClips={audioClips}
-            videoClips={[]}
-            resolvedUrls={resolvedUrls}
-            playback={playback}
-            audioOnly
-          />
-        </div>
-      )}
-
       {/* Audio Player */}
       {audioClips.length > 0 && (
         <div className="script-audio-player">
@@ -426,12 +385,12 @@ function ScriptEditor({ audioClips, onAudioGenerated, onOpenSettings, isTabActiv
               min="0"
               max={totalDuration || 0}
               step="0.1"
-              value={playback.currentTime}
+              value={currentTime}
               onChange={handleSeekInput}
             />
           </div>
           <span className="audio-time">
-            {formatTime(playback.currentTime)} / {formatTime(totalDuration)}
+            {formatTime(currentTime)} / {formatTime(totalDuration)}
           </span>
           <span className="audio-name">
             {audioClips[0]?.name}

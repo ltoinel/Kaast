@@ -1,10 +1,11 @@
 import { useState, useEffect, useCallback, useMemo, useRef, memo } from "react";
 import { useTranslation } from "react-i18next";
 import "./ScenesPage.css";
-import { safeInvoke, getTauriErrorMessage, loadFileAsDataUri, getStreamingUrl } from "../utils/tauri";
+import { safeInvoke, getTauriErrorMessage, loadFileAsDataUri, getStreamingUrl, basename } from "../utils/tauri";
+import { formatTime } from "../utils/timecode";
 import type { AudioClip, VideoClip, VideoScene } from "../types";
-import MediaPreview from "./MediaPreview";
-import { usePlaybackSync } from "../hooks/usePlaybackSync";
+import type { PlaybackHandle } from "../hooks/usePlaybackSync";
+import { usePlaybackTime } from "../hooks/usePlaybackSync";
 import { getStoredPexelsApiKey } from "./Settings";
 import { getStoredSceneStylePrompt } from "./StyleEditor";
 
@@ -42,16 +43,17 @@ interface ScenesPageProps {
   projectPath?: string;
   onOpenSettings?: () => void;
   onProduceToTimeline?: (clips: VideoClip[]) => void;
-  isTabActive?: boolean;
+  playback: PlaybackHandle;
+  isActive?: boolean;
 }
 
-function ScenesPage({ audioClips, projectPath, onOpenSettings, onProduceToTimeline, isTabActive = true }: ScenesPageProps) {
+function ScenesPage({ audioClips, projectPath, onOpenSettings, onProduceToTimeline, playback, isActive = true }: ScenesPageProps) {
   const { t, i18n } = useTranslation();
+  const currentTime = usePlaybackTime(playback, isActive);
   const [scenes, setScenes] = useState<VideoScene[]>([]);
   const [script, setScript] = useState<string>("");
   const [isGenerating, setIsGenerating] = useState<boolean>(false);
   const [error, setError] = useState<string>("");
-  const [resolvedUrls, setResolvedUrls] = useState<Record<string, string>>({});
   const [editingSceneId, setEditingSceneId] = useState<string | null>(null);
   const [editingText, setEditingText] = useState<string>("");
   const [isProducing, setIsProducing] = useState<boolean>(false);
@@ -62,35 +64,12 @@ function ScenesPage({ audioClips, projectPath, onOpenSettings, onProduceToTimeli
   const [videoModalUrl, setVideoModalUrl] = useState<string | null>(null);
   const [maxSceneDuration, setMaxSceneDuration] = useState<number>(10);
 
-  // Total audio duration
+  // Total audio duration (kept for scene timing calculations and generation)
   const totalDuration = useMemo(() => {
     return Math.max(
       ...audioClips.map(c => c.startTime + c.duration),
       0
     );
-  }, [audioClips]);
-
-  // Native playback sync hook
-  const playback = usePlaybackSync({ totalDuration, volume: 1, isActive: isTabActive });
-
-  // Resolve audio clip paths to streaming URLs via local HTTP server
-  useEffect(() => {
-    const uniquePaths = [...new Set(audioClips.map(c => c.path))];
-    if (uniquePaths.length === 0) return;
-
-    let cancelled = false;
-    Promise.all(
-      uniquePaths.map(async (p) => {
-        const url = await getStreamingUrl(p);
-        return [p, url] as const;
-      })
-    ).then((entries) => {
-      if (!cancelled) {
-        setResolvedUrls(Object.fromEntries(entries));
-      }
-    });
-
-    return () => { cancelled = true; };
   }, [audioClips]);
 
   // Load script from project
@@ -136,12 +115,6 @@ function ScenesPage({ audioClips, projectPath, onOpenSettings, onProduceToTimeli
       setThumbnailUrls((prev) => ({ ...prev, [sceneId]: "" }));
     }
   }, [thumbnailUrls]);
-
-  const formatTime = (seconds: number): string => {
-    const mins = Math.floor(seconds / 60);
-    const secs = Math.floor(seconds % 60);
-    return `${mins}:${secs.toString().padStart(2, "0")}`;
-  };
 
   const handleSeekInput = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const time = parseFloat(e.target.value);
@@ -235,12 +208,12 @@ function ScenesPage({ audioClips, projectPath, onOpenSettings, onProduceToTimeli
 
   // Find active scene index based on currentTime
   const activeSceneIndex = useMemo(() => {
-    if (!playback.isPlaying && playback.currentTime === 0) return -1;
+    if (!playback.isPlaying && currentTime === 0) return -1;
     for (let i = sceneTimings.length - 1; i >= 0; i--) {
-      if (playback.currentTime >= sceneTimings[i].start) return i;
+      if (currentTime >= sceneTimings[i].start) return i;
     }
     return -1;
-  }, [playback.currentTime, sceneTimings, playback.isPlaying]);
+  }, [currentTime, sceneTimings, playback.isPlaying]);
 
   // IntersectionObserver for lazy-loading thumbnails
   const observerRef = useRef<IntersectionObserver | null>(null);
@@ -403,7 +376,7 @@ function ScenesPage({ audioClips, projectPath, onOpenSettings, onProduceToTimeli
     const clips: VideoClip[] = scenesWithVideo.map((scene, index) => {
       const clip: VideoClip = {
         id: `video_${Date.now()}_${index}`,
-        name: scene.videoPath!.split("/").pop() || `Scene ${index + 1}`,
+        name: basename(scene.videoPath!) || `Scene ${index + 1}`,
         path: scene.videoPath!,
         duration: scene.duration,
         startTime: offset,
@@ -452,19 +425,6 @@ function ScenesPage({ audioClips, projectPath, onOpenSettings, onProduceToTimeli
 
   return (
     <div className="scenes-page">
-      {/* Hidden audio elements for playback */}
-      {audioClips.length > 0 && totalDuration > 0 && (
-        <div style={{ position: "fixed", left: -9999, top: -9999, width: 0, height: 0, overflow: "hidden" }}>
-          <MediaPreview
-            audioClips={audioClips}
-            videoClips={[]}
-            resolvedUrls={resolvedUrls}
-            playback={playback}
-            audioOnly
-          />
-        </div>
-      )}
-
       {/* Header */}
       <div className="scenes-header">
         <div className="scenes-header-left">
@@ -527,7 +487,7 @@ function ScenesPage({ audioClips, projectPath, onOpenSettings, onProduceToTimeli
           )}
           {scenes.some(s => s.videoPath) && (
             <button
-              className="btn btn-primary"
+              className="btn btn-info"
               onClick={handleProduceToTimeline}
             >
               <IconFilm />
@@ -556,12 +516,12 @@ function ScenesPage({ audioClips, projectPath, onOpenSettings, onProduceToTimeli
               min="0"
               max={totalDuration || 0}
               step="0.1"
-              value={playback.currentTime}
+              value={currentTime}
               onChange={handleSeekInput}
             />
           </div>
           <span className="audio-time">
-            {formatTime(playback.currentTime)} / {formatTime(totalDuration)}
+            {formatTime(currentTime)} / {formatTime(totalDuration)}
           </span>
           <span className="audio-name">
             {audioClips[0]?.name}
@@ -594,7 +554,7 @@ function ScenesPage({ audioClips, projectPath, onOpenSettings, onProduceToTimeli
               const isPast = activeSceneIndex >= 0 && index < activeSceneIndex;
               const timing = sceneTimings[index];
               const progress = isActive && timing
-                ? Math.min(1, Math.max(0, (playback.currentTime - timing.start) / (timing.end - timing.start)))
+                ? Math.min(1, Math.max(0, (currentTime - timing.start) / (timing.end - timing.start)))
                 : 0;
               const hasThumbnail = !!scene.thumbnailPath && !!thumbnailUrls[scene.id];
               const isDownloading = downloadingSceneId === scene.id;

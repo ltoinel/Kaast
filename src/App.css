@@ -29,20 +29,25 @@
   width: 36px;
   height: 36px;
   border-radius: var(--radius-md);
-  background: var(--bg-hover);
+  background: rgba(255, 255, 255, 0.04);
   border: 1px solid var(--border-default);
   color: var(--text-secondary);
   cursor: pointer;
-  transition: all var(--transition-normal);
+  transition: background 0.2s ease, color 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease, transform 0.15s ease;
   display: flex;
   align-items: center;
   justify-content: center;
 }
 
 .new-project-btn:hover {
-  background: var(--bg-active);
+  background: rgba(224, 112, 32, 0.1);
   border-color: var(--accent-primary);
   color: var(--accent-primary);
+  box-shadow: 0 0 16px rgba(224, 112, 32, 0.15);
+}
+
+.new-project-btn:active {
+  transform: scale(0.93);
 }
 
 .sidebar-nav {
@@ -60,28 +65,33 @@
   padding: var(--spacing-md);
   background: transparent;
   border: 1px solid transparent;
-  border-radius: var(--radius-md);
+  border-radius: var(--radius-lg);
   cursor: pointer;
-  transition: all var(--transition-normal);
+  transition: background 0.2s ease, color 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease, transform 0.15s ease;
   position: relative;
   color: var(--text-muted);
   min-height: 40px;
 }
 
 .nav-item:hover {
-  background: var(--bg-hover);
+  background: rgba(255, 255, 255, 0.06);
   color: var(--text-primary);
   border-color: var(--border-subtle);
 }
 
+.nav-item:active {
+  transform: scale(0.93);
+}
+
 .nav-item.active {
-  background: var(--bg-active);
+  background: rgba(224, 112, 32, 0.1);
   color: var(--accent-primary);
-  border-color: var(--border-default);
+  border-color: rgba(224, 112, 32, 0.3);
+  box-shadow: 0 0 12px rgba(224, 112, 32, 0.1);
 }
 
 .nav-item.active:hover {
-  background: var(--bg-active);
+  background: rgba(224, 112, 32, 0.15);
   color: var(--accent-primary-hover);
 }
 

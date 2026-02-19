@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect, useMemo, useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import "./Timeline.css";
-import { getStreamingUrl } from "../utils/tauri";
+import { formatTime } from "../utils/timecode";
 import type { AudioClip, VideoClip } from "../types";
 export type { AudioClip, VideoClip };
 
@@ -36,7 +36,7 @@ function Timeline({
     ? externalSelectedClip
     : internalSelectedClip;
   const [zoom, setZoom] = useState<number>(50);
-  const [internalIsPlaying, setInternalIsPlaying] = useState<boolean>(false);
+  const [internalIsPlaying] = useState<boolean>(false);
   const [internalCurrentTime, setInternalCurrentTime] = useState<number>(0);
   const [dragOverTrack, setDragOverTrack] = useState<"audio" | "video" | null>(null);
   const [dragSnapX, setDragSnapX] = useState<number | null>(null);
@@ -45,7 +45,6 @@ function Timeline({
   const dragOffsetRef = useRef<number>(0);
   const timelineRef = useRef<HTMLDivElement>(null);
   const rulerRef = useRef<HTMLDivElement>(null);
-  const audioRef = useRef<HTMLAudioElement | null>(null);
 
   const isPlaying = externalIsPlaying !== undefined ? externalIsPlaying : internalIsPlaying;
   const currentTime = externalCurrentTime !== undefined ? externalCurrentTime : internalCurrentTime;
@@ -83,12 +82,6 @@ function Timeline({
     return heights;
   }, [audioClips]);
 
-  const formatTime = (seconds: number): string => {
-    const mins = Math.floor(seconds / 60);
-    const secs = Math.floor(seconds % 60);
-    return `${mins}:${secs.toString().padStart(2, "0")}`;
-  };
-
   const handleClipClick = (clipId: string, type: "audio" | "video") => {
     setInternalSelectedClip(clipId);
     if (onClipSelect) {
@@ -96,20 +89,9 @@ function Timeline({
     }
   };
 
-  const handleClipDoubleClick = async (clip: AudioClip | VideoClip) => {
+  const handleClipDoubleClick = (clip: AudioClip | VideoClip) => {
     if (onPlayClip) {
       onPlayClip(clip);
-    } else if ("path" in clip) {
-      if (audioRef.current) {
-        try {
-          const url = await getStreamingUrl(clip.path);
-          audioRef.current.src = url;
-          audioRef.current.play();
-          setInternalIsPlaying(true);
-        } catch (err) {
-          console.error("Audio playback error:", err);
-        }
-      }
     }
   };
 
@@ -207,34 +189,9 @@ function Timeline({
     onMoveClip(clipId, clipType, snappedTime);
   }, [zoom, onMoveClip]);
 
-  useEffect(() => {
-    let animationFrame: number;
-
-    if (internalIsPlaying && audioRef.current) {
-      const updateTime = () => {
-        if (audioRef.current) {
-          setInternalCurrentTime(audioRef.current.currentTime);
-          if (!audioRef.current.paused) {
-            animationFrame = requestAnimationFrame(updateTime);
-          } else {
-            setInternalIsPlaying(false);
-          }
-        }
-      };
-      animationFrame = requestAnimationFrame(updateTime);
-    }
-
-    return () => {
-      if (animationFrame) {
-        cancelAnimationFrame(animationFrame);
-      }
-    };
-  }, [internalIsPlaying]);
 
   return (
     <div className="timeline">
-      <audio ref={audioRef} onEnded={() => setInternalIsPlaying(false)} />
-
       <div className="timeline-header">
         <h3>{"\uD83C\uDFAC"} {t('timeline.title')}</h3>
         <div className="timeline-controls">

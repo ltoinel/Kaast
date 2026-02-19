@@ -67,25 +67,31 @@
   justify-content: center;
   width: 36px;
   height: 36px;
-  background: var(--bg-tertiary);
+  background: rgba(255, 255, 255, 0.04);
   border: 1px solid var(--border-default);
   border-radius: var(--radius-full);
   color: var(--text-primary);
   font-size: 0.9rem;
   cursor: pointer;
-  transition: all var(--transition-fast);
+  transition: background 0.2s ease, color 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease, transform 0.15s ease;
   flex-shrink: 0;
 }
 
 .audio-play-btn:hover:not(:disabled) {
-  background: var(--bg-hover);
+  background: rgba(224, 112, 32, 0.1);
   border-color: var(--accent-primary);
   color: var(--accent-primary);
+  box-shadow: 0 0 16px rgba(224, 112, 32, 0.15);
+}
+
+.audio-play-btn:active:not(:disabled) {
+  transform: scale(0.93);
 }
 
 .audio-play-btn:disabled {
-  opacity: 0.4;
+  opacity: 0.35;
   cursor: not-allowed;
+  filter: grayscale(0.3);
 }
 
 .audio-progress-wrapper {
@@ -371,17 +377,23 @@
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  width: 40px;
-  height: 40px;
+  width: 42px;
+  height: 42px;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(0, 0, 0, 0.55);
+  background: rgba(0, 0, 0, 0.6);
   border-radius: 50%;
   color: #fff;
   font-size: 1rem;
   pointer-events: none;
-  transition: opacity var(--transition-fast);
+  transition: background 0.2s ease, box-shadow 0.2s ease, transform 0.15s ease;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+}
+
+.scene-video-container:hover .scene-video-play-btn {
+  background: rgba(224, 112, 32, 0.7);
+  box-shadow: 0 4px 24px rgba(224, 112, 32, 0.3);
 }
 
 .scene-video-container {
@@ -413,19 +425,21 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 24px;
-  height: 24px;
+  width: 26px;
+  height: 26px;
   border: none;
-  border-radius: var(--radius-sm);
-  background: rgba(0, 0, 0, 0.6);
+  border-radius: var(--radius-md);
+  background: rgba(0, 0, 0, 0.65);
   color: var(--text-primary);
   font-size: 0.75rem;
   cursor: pointer;
-  transition: background var(--transition-fast);
+  transition: background 0.2s ease, color 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease, transform 0.15s ease;
 }
 
 .scene-video-action:hover {
   background: var(--accent-error);
+  box-shadow: 0 2px 12px rgba(239, 83, 80, 0.3);
+  transform: scale(1.1);
 }
 
 /* Producing/downloading overlay */
@@ -477,8 +491,8 @@
   position: absolute;
   top: -12px;
   right: -12px;
-  width: 28px;
-  height: 28px;
+  width: 30px;
+  height: 30px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -488,11 +502,13 @@
   color: var(--text-primary);
   font-size: 0.8rem;
   cursor: pointer;
-  transition: background var(--transition-fast);
+  transition: background 0.2s ease, color 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease, transform 0.15s ease;
 }
 
 .scene-modal-close:hover {
   background: var(--accent-error);
+  box-shadow: 0 2px 12px rgba(239, 83, 80, 0.3);
+  transform: scale(1.1);
 }
 
 /* Spinner uses global .spinner from styles.css */

@@ -2,10 +2,10 @@ import { useState, useEffect, useCallback, useMemo, memo } from "react";
 import { useTranslation } from "react-i18next";
 import "./EditPage.css";
 import type { AudioClip, VideoClip } from "../types";
+import type { PlaybackHandle } from "../hooks/usePlaybackSync";
+import { usePlaybackTime } from "../hooks/usePlaybackSync";
 import Timeline from "./Timeline";
 import MediaPreview from "./MediaPreview";
-import { usePlaybackSync } from "../hooks/usePlaybackSync";
-import { convertToAssetUrl, getStreamingUrl } from "../utils/tauri";
 import { formatTimecode } from "../utils/timecode";
 
 interface EditPageProps {
@@ -16,16 +16,19 @@ interface EditPageProps {
   onMoveClip?: (clipId: string, type: "audio" | "video", newStartTime: number) => void;
   projectPath?: string;
   isTabActive?: boolean;
+  playback: PlaybackHandle;
+  resolvedUrls: Record<string, string>;
+  volume: number;
+  onVolumeChange: (volume: number) => void;
 }
 
-function EditPage({ audioClips, videoClips, onAddMedia, onDeleteClip, onMoveClip, isTabActive = true }: EditPageProps) {
+function EditPage({ audioClips, videoClips, onAddMedia, onDeleteClip, onMoveClip, isTabActive = true, playback, resolvedUrls, volume, onVolumeChange }: EditPageProps) {
   const { t } = useTranslation();
   const [selectedClip, setSelectedClip] = useState<AudioClip | VideoClip | null>(null);
   const [selectedClipType, setSelectedClipType] = useState<"audio" | "video" | null>(null);
-  const [volume, setVolume] = useState<number>(0.8);
-  const [resolvedUrls, setResolvedUrls] = useState<Record<string, string>>({});
+  const currentTime = usePlaybackTime(playback, isTabActive);
 
-  // Compute total duration from all clips
+  // Compute total duration from all clips (for timecode display)
   const totalDuration = useMemo(() => {
     return Math.max(
       ...audioClips.map(c => c.startTime + c.duration),
@@ -33,78 +36,6 @@ function EditPage({ audioClips, videoClips, onAddMedia, onDeleteClip, onMoveClip
       0
     );
   }, [audioClips, videoClips]);
-
-  // Playback sync hook (HTML5 native)
-  const playback = usePlaybackSync({ totalDuration, volume, isActive: isTabActive });
-
-  // Phase 1: Thumbnails — instant via Tauri asset protocol
-  useEffect(() => {
-    const thumbPaths = [...new Set(videoClips.map(c => c.thumbnail).filter(Boolean) as string[])];
-    if (thumbPaths.length === 0) return;
-
-    let cancelled = false;
-    Promise.all(
-      thumbPaths.map(async (p) => {
-        try {
-          const url = await convertToAssetUrl(p);
-          return [p, url] as const;
-        } catch {
-          return [p, ""] as const;
-        }
-      })
-    ).then((entries) => {
-      if (!cancelled) {
-        setResolvedUrls(prev => ({ ...prev, ...Object.fromEntries(entries) }));
-      }
-    });
-    return () => { cancelled = true; };
-  }, [videoClips]);
-
-  // Phase 2: Audio — streaming URLs via local HTTP server
-  useEffect(() => {
-    const audioPaths = [...new Set(audioClips.map(c => c.path))];
-    if (audioPaths.length === 0) return;
-
-    let cancelled = false;
-    Promise.all(
-      audioPaths.map(async (p) => {
-        const url = await getStreamingUrl(p);
-        return [p, url] as const;
-      })
-    ).then((entries) => {
-      if (!cancelled) {
-        setResolvedUrls(prev => ({ ...prev, ...Object.fromEntries(entries) }));
-      }
-    });
-    return () => { cancelled = true; };
-  }, [audioClips]);
-
-  // Phase 3: Video — streaming URLs via local HTTP server (Range support, no memory bloat)
-  useEffect(() => {
-    const videoPaths = [...new Set(videoClips.map(c => c.path))];
-    if (videoPaths.length === 0) return;
-
-    const proxyMap = new Map<string, string>();
-    for (const c of videoClips) {
-      if (c.proxyPath && !proxyMap.has(c.path)) {
-        proxyMap.set(c.path, c.proxyPath);
-      }
-    }
-
-    let cancelled = false;
-    Promise.all(
-      videoPaths.map(async (p) => {
-        const fileToStream = proxyMap.get(p) || p;
-        const url = await getStreamingUrl(fileToStream);
-        return [p, url] as const;
-      })
-    ).then((entries) => {
-      if (!cancelled) {
-        setResolvedUrls(prev => ({ ...prev, ...Object.fromEntries(entries) }));
-      }
-    });
-    return () => { cancelled = true; };
-  }, [videoClips]);
 
   // Delete selected clip with Delete key
   useEffect(() => {
@@ -233,6 +164,7 @@ function EditPage({ audioClips, videoClips, onAddMedia, onDeleteClip, onMoveClip
                   videoClips={videoClips}
                   resolvedUrls={resolvedUrls}
                   playback={playback}
+                  videoOnly
                 />
               ) : (
                 <div className="viewport-placeholder">
@@ -243,7 +175,7 @@ function EditPage({ audioClips, videoClips, onAddMedia, onDeleteClip, onMoveClip
             </div>
 
             <div className="timecode-display">
-              <span className="timecode">{formatTimecode(playback.currentTime)}</span>
+              <span className="timecode">{formatTimecode(currentTime)}</span>
               <span className="timecode-separator">/</span>
               <span className="timecode total">{formatTimecode(totalDuration)}</span>
             </div>
@@ -285,7 +217,7 @@ function EditPage({ audioClips, videoClips, onAddMedia, onDeleteClip, onMoveClip
                 max="1"
                 step="0.1"
                 value={volume}
-                onChange={(e) => setVolume(parseFloat(e.target.value))}
+                onChange={(e) => onVolumeChange(parseFloat(e.target.value))}
                 className="volume-slider"
               />
             </div>
@@ -337,7 +269,7 @@ function EditPage({ audioClips, videoClips, onAddMedia, onDeleteClip, onMoveClip
           onClipSelect={handleClipSelect}
           onPlayClip={handlePlayClip}
           onMoveClip={onMoveClip}
-          currentTime={playback.currentTime}
+          currentTime={currentTime}
           isPlaying={playback.isPlaying}
           onSeek={playback.handleSeek}
         />

@@ -7,6 +7,7 @@ import {
   getCurrentProject,
   Project
 } from "../utils/project";
+import { basename } from "../utils/tauri";
 import "./ProjectStartup.css";
 
 declare global {
@@ -90,7 +91,7 @@ function ProjectStartup({ onProjectReady }: ProjectStartupProps) {
       });
 
       if (typeof selectedPath === "string") {
-        const name = selectedPath.split("/").pop() || t('app.project');
+        const name = basename(selectedPath) || t('app.project');
         const project = createProject(name, selectedPath);
         setCurrentProject(project);
         onProjectReady(project);

@@ -3,6 +3,15 @@
  */
 import i18n from '../i18n';
 
+/**
+ * Extract the file name from a path, handling both `/` (Unix) and `\` (Windows).
+ * Returns the full string if no separator is found.
+ */
+export function basename(filePath: string): string {
+  const lastSep = Math.max(filePath.lastIndexOf('/'), filePath.lastIndexOf('\\'));
+  return lastSep >= 0 ? filePath.substring(lastSep + 1) : filePath;
+}
+
 // Check if we are running inside a Tauri v2 webview
 export function isTauriAvailable(): boolean {
   return typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
