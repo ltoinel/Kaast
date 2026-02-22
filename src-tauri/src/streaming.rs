@@ -102,7 +102,7 @@ async fn handle_preflight() -> Response {
 }
 
 /// Pick the streaming chunk size based on content type.
-fn chunk_size_for(content_type: &str) -> usize {
+pub(crate) fn chunk_size_for(content_type: &str) -> usize {
     if content_type.starts_with("audio/") {
         AUDIO_CHUNK_SIZE
     } else {
@@ -168,7 +168,7 @@ async fn serve_file(path: &PathBuf, range_header: Option<&str>) -> Result<Respon
 
 /// Parse an HTTP Range header value into (start, end) byte positions.
 /// Supports `bytes=START-END`, `bytes=START-`, and `bytes=-SUFFIX`.
-fn parse_range(header: &str, file_size: u64) -> Option<(u64, u64)> {
+pub(crate) fn parse_range(header: &str, file_size: u64) -> Option<(u64, u64)> {
     let range_spec = header.strip_prefix("bytes=")?;
     let (start_str, end_str) = range_spec.split_once('-')?;
 
@@ -214,7 +214,7 @@ fn validate_path(path_str: &str) -> Result<PathBuf, String> {
 }
 
 /// Map a file extension to its MIME type.
-fn mime_from_ext(ext: &str) -> &'static str {
+pub(crate) fn mime_from_ext(ext: &str) -> &'static str {
     match ext.to_lowercase().as_str() {
         "mp4" => "video/mp4",
         "webm" => "video/webm",
@@ -259,4 +259,103 @@ fn error_response(status: StatusCode, message: String) -> Response {
     let mut resp = (status, message).into_response();
     apply_cors_headers(resp.headers_mut());
     resp
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // -----------------------------------------------------------------------
+    // parse_range
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn parse_range_full_range() {
+        assert_eq!(parse_range("bytes=0-99", 1000), Some((0, 99)));
+    }
+
+    #[test]
+    fn parse_range_open_end() {
+        assert_eq!(parse_range("bytes=100-", 1000), Some((100, 999)));
+    }
+
+    #[test]
+    fn parse_range_suffix() {
+        assert_eq!(parse_range("bytes=-100", 1000), Some((900, 999)));
+    }
+
+    #[test]
+    fn parse_range_start_ge_end() {
+        assert_eq!(parse_range("bytes=100-50", 1000), None);
+    }
+
+    #[test]
+    fn parse_range_start_ge_file_size() {
+        assert_eq!(parse_range("bytes=1000-", 1000), None);
+    }
+
+    #[test]
+    fn parse_range_malformed() {
+        assert_eq!(parse_range("invalid", 1000), None);
+    }
+
+    #[test]
+    fn parse_range_no_bytes_prefix() {
+        assert_eq!(parse_range("0-99", 1000), None);
+    }
+
+    #[test]
+    fn parse_range_end_clamped_to_file_size() {
+        assert_eq!(parse_range("bytes=0-9999", 1000), Some((0, 999)));
+    }
+
+    // -----------------------------------------------------------------------
+    // mime_from_ext
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn mime_known_extensions() {
+        assert_eq!(mime_from_ext("mp4"), "video/mp4");
+        assert_eq!(mime_from_ext("webm"), "video/webm");
+        assert_eq!(mime_from_ext("mkv"), "video/x-matroska");
+        assert_eq!(mime_from_ext("avi"), "video/x-msvideo");
+        assert_eq!(mime_from_ext("mov"), "video/quicktime");
+        assert_eq!(mime_from_ext("wav"), "audio/wav");
+        assert_eq!(mime_from_ext("mp3"), "audio/mpeg");
+        assert_eq!(mime_from_ext("ogg"), "audio/ogg");
+        assert_eq!(mime_from_ext("flac"), "audio/flac");
+        assert_eq!(mime_from_ext("m4a"), "audio/mp4");
+    }
+
+    #[test]
+    fn mime_unknown_extension() {
+        assert_eq!(mime_from_ext("xyz"), "application/octet-stream");
+    }
+
+    #[test]
+    fn mime_mixed_case() {
+        assert_eq!(mime_from_ext("MP4"), "video/mp4");
+        assert_eq!(mime_from_ext("Wav"), "audio/wav");
+    }
+
+    // -----------------------------------------------------------------------
+    // chunk_size_for
+    // -----------------------------------------------------------------------
+
+    #[test]
+    fn chunk_size_audio() {
+        assert_eq!(chunk_size_for("audio/wav"), AUDIO_CHUNK_SIZE);
+        assert_eq!(chunk_size_for("audio/mpeg"), AUDIO_CHUNK_SIZE);
+    }
+
+    #[test]
+    fn chunk_size_video() {
+        assert_eq!(chunk_size_for("video/mp4"), VIDEO_CHUNK_SIZE);
+        assert_eq!(chunk_size_for("video/webm"), VIDEO_CHUNK_SIZE);
+    }
+
+    #[test]
+    fn chunk_size_unknown() {
+        assert_eq!(chunk_size_for("application/octet-stream"), VIDEO_CHUNK_SIZE);
+    }
 }

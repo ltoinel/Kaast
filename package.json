@@ -9,7 +9,8 @@
     "build": "tsc && vite build",
     "preview": "vite preview",
     "tauri": "tauri",
-    "download-ffmpeg": "bash scripts/download-ffmpeg.sh"
+    "download-ffmpeg": "bash scripts/download-ffmpeg.sh",
+    "test": "vitest run"
   },
   "dependencies": {
     "@tauri-apps/api": "^2.0.0",
@@ -28,7 +29,9 @@
     "@types/react": "^18.3.0",
     "@types/react-dom": "^18.3.0",
     "@vitejs/plugin-react": "^4.3.0",
+    "happy-dom": "^20.7.0",
     "typescript": "^5.5.0",
-    "vite": "^5.3.0"
+    "vite": "^5.3.0",
+    "vitest": "^4.0.18"
   }
 }

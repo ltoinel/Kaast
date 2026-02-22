@@ -9,26 +9,26 @@ use serde::Deserialize;
 // ---------------------------------------------------------------------------
 
 #[derive(Deserialize)]
-struct PexelsSearchResponse {
-    videos: Vec<PexelsVideo>,
+pub(crate) struct PexelsSearchResponse {
+    pub(crate) videos: Vec<PexelsVideo>,
 }
 
 #[derive(Deserialize)]
-struct PexelsVideo {
+pub(crate) struct PexelsVideo {
     #[serde(default)]
-    duration: u32,
-    video_files: Vec<PexelsVideoFile>,
+    pub(crate) duration: u32,
+    pub(crate) video_files: Vec<PexelsVideoFile>,
 }
 
 #[derive(Deserialize)]
-struct PexelsVideoFile {
+pub(crate) struct PexelsVideoFile {
     #[serde(default)]
-    file_type: Option<String>,
+    pub(crate) file_type: Option<String>,
     #[serde(default)]
-    quality: Option<String>,
+    pub(crate) quality: Option<String>,
     #[serde(default)]
-    width: Option<u32>,
-    link: String,
+    pub(crate) width: Option<u32>,
+    pub(crate) link: String,
 }
 
 // ---------------------------------------------------------------------------
@@ -128,7 +128,7 @@ pub async fn search_and_download_pexels_video(
 
 /// Select the best video file from Pexels results: prefer mp4, HD quality, highest resolution.
 /// Videos shorter than `min_duration` are excluded when possible.
-fn select_best_video_file(pexels_data: &PexelsSearchResponse, min_duration: u32) -> Option<&PexelsVideoFile> {
+pub(crate) fn select_best_video_file(pexels_data: &PexelsSearchResponse, min_duration: u32) -> Option<&PexelsVideoFile> {
     // Prefer videos that are at least as long as the scene
     let long_enough: Vec<&PexelsVideo> = pexels_data
         .videos
@@ -168,4 +168,105 @@ fn select_best_video_file(pexels_data: &PexelsSearchResponse, min_duration: u32)
                 .flat_map(|v| v.video_files.iter())
                 .max_by_key(|f| f.width.unwrap_or(0))
         })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Helper to build a PexelsVideoFile for tests.
+    fn make_file(file_type: Option<&str>, quality: Option<&str>, width: Option<u32>, link: &str) -> PexelsVideoFile {
+        PexelsVideoFile {
+            file_type: file_type.map(String::from),
+            quality: quality.map(String::from),
+            width,
+            link: link.to_string(),
+        }
+    }
+
+    /// Helper to build a PexelsSearchResponse for tests.
+    fn make_response(videos: Vec<PexelsVideo>) -> PexelsSearchResponse {
+        PexelsSearchResponse { videos }
+    }
+
+    #[test]
+    fn no_videos_returns_none() {
+        let data = make_response(vec![]);
+        assert!(select_best_video_file(&data, 5).is_none());
+    }
+
+    #[test]
+    fn prefers_mp4_hd() {
+        let data = make_response(vec![PexelsVideo {
+            duration: 10,
+            video_files: vec![
+                make_file(Some("video/webm"), Some("hd"), Some(1920), "webm_hd"),
+                make_file(Some("video/mp4"), Some("hd"), Some(1920), "mp4_hd"),
+                make_file(Some("video/mp4"), Some("sd"), Some(640), "mp4_sd"),
+            ],
+        }]);
+        let best = select_best_video_file(&data, 5).unwrap();
+        assert_eq!(best.link, "mp4_hd");
+    }
+
+    #[test]
+    fn prefers_higher_resolution_mp4() {
+        let data = make_response(vec![PexelsVideo {
+            duration: 10,
+            video_files: vec![
+                make_file(Some("video/mp4"), Some("hd"), Some(1280), "mp4_1280"),
+                make_file(Some("video/mp4"), Some("hd"), Some(1920), "mp4_1920"),
+            ],
+        }]);
+        let best = select_best_video_file(&data, 5).unwrap();
+        assert_eq!(best.link, "mp4_1920");
+    }
+
+    #[test]
+    fn fallback_to_non_mp4_when_no_mp4() {
+        let data = make_response(vec![PexelsVideo {
+            duration: 10,
+            video_files: vec![
+                make_file(Some("video/webm"), Some("hd"), Some(1920), "webm_hd"),
+                make_file(Some("video/webm"), Some("sd"), Some(640), "webm_sd"),
+            ],
+        }]);
+        let best = select_best_video_file(&data, 5).unwrap();
+        assert_eq!(best.link, "webm_hd");
+    }
+
+    #[test]
+    fn filters_by_duration() {
+        let data = make_response(vec![
+            PexelsVideo {
+                duration: 3,
+                video_files: vec![make_file(Some("video/mp4"), Some("hd"), Some(1920), "short")],
+            },
+            PexelsVideo {
+                duration: 10,
+                video_files: vec![make_file(Some("video/mp4"), Some("hd"), Some(1920), "long")],
+            },
+        ]);
+        let best = select_best_video_file(&data, 5).unwrap();
+        assert_eq!(best.link, "long");
+    }
+
+    #[test]
+    fn falls_back_when_none_meet_duration() {
+        let data = make_response(vec![PexelsVideo {
+            duration: 3,
+            video_files: vec![make_file(Some("video/mp4"), Some("hd"), Some(1920), "short_only")],
+        }]);
+        let best = select_best_video_file(&data, 10).unwrap();
+        assert_eq!(best.link, "short_only");
+    }
+
+    #[test]
+    fn video_with_no_files_returns_none() {
+        let data = make_response(vec![PexelsVideo {
+            duration: 10,
+            video_files: vec![],
+        }]);
+        assert!(select_best_video_file(&data, 5).is_none());
+    }
 }

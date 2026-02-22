@@ -261,7 +261,7 @@ pub async fn generate_voice(text: String, api_key: String, output_path: String, 
 }
 
 /// Build a WAV file (PCM 16-bit mono) from raw audio samples.
-fn build_wav_data(audio_data: &[u8], sample_rate: u32) -> Vec<u8> {
+pub(crate) fn build_wav_data(audio_data: &[u8], sample_rate: u32) -> Vec<u8> {
     let channels: u16 = 1;
     let bits_per_sample: u16 = 16;
     let byte_rate = sample_rate * channels as u32 * bits_per_sample as u32 / 8;
@@ -470,4 +470,61 @@ pub async fn generate_video_scenes(script: String, api_key: String, total_durati
         .map_err(|e| format!("Invalid JSON response: {}", e))?;
 
     Ok(json_text.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn build_wav_header_size() {
+        let audio = vec![0u8; 100];
+        let wav = build_wav_data(&audio, 24000);
+        assert_eq!(wav.len(), 44 + 100);
+    }
+
+    #[test]
+    fn build_wav_riff_header() {
+        let wav = build_wav_data(&[0u8; 10], 24000);
+        assert_eq!(&wav[0..4], b"RIFF");
+        assert_eq!(&wav[8..12], b"WAVE");
+    }
+
+    #[test]
+    fn build_wav_sample_rate() {
+        let wav = build_wav_data(&[0u8; 10], 48000);
+        let sample_rate = u32::from_le_bytes([wav[24], wav[25], wav[26], wav[27]]);
+        assert_eq!(sample_rate, 48000);
+    }
+
+    #[test]
+    fn build_wav_data_size() {
+        let audio = vec![0u8; 256];
+        let wav = build_wav_data(&audio, 24000);
+        let data_size = u32::from_le_bytes([wav[40], wav[41], wav[42], wav[43]]);
+        assert_eq!(data_size, 256);
+    }
+
+    #[test]
+    fn build_wav_empty_audio() {
+        let wav = build_wav_data(&[], 24000);
+        assert_eq!(wav.len(), 44);
+        let data_size = u32::from_le_bytes([wav[40], wav[41], wav[42], wav[43]]);
+        assert_eq!(data_size, 0);
+    }
+
+    #[test]
+    fn build_wav_fmt_chunk() {
+        let wav = build_wav_data(&[0u8; 10], 24000);
+        assert_eq!(&wav[12..16], b"fmt ");
+        // fmt chunk size = 16
+        let fmt_size = u32::from_le_bytes([wav[16], wav[17], wav[18], wav[19]]);
+        assert_eq!(fmt_size, 16);
+        // PCM format = 1
+        let audio_format = u16::from_le_bytes([wav[20], wav[21]]);
+        assert_eq!(audio_format, 1);
+        // Mono = 1 channel
+        let channels = u16::from_le_bytes([wav[22], wav[23]]);
+        assert_eq!(channels, 1);
+    }
 }
