@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 import "./PublishPage.css";
 import { safeInvoke, getTauriErrorMessage } from "../utils/tauri";
 import type { AudioClip, VideoClip } from "../types";
-import { formatTimecode } from "../utils/timecode";
+
 
 type ExportQuality = "ultrafast" | "fast" | "medium" | "slow";
 type ExportFormat = "h264" | "h265" | "vp9" | "prores";
