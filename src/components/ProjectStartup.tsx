@@ -8,6 +8,7 @@ import {
   Project
 } from "../utils/project";
 import { basename } from "../utils/tauri";
+import { useAsyncAction } from "../hooks/useAsyncAction";
 import "./ProjectStartup.css";
 
 declare global {
@@ -24,9 +25,8 @@ function ProjectStartup({ onProjectReady }: ProjectStartupProps) {
   const { t } = useTranslation();
   const [projects, setProjects] = useState<Project[]>([]);
   const [projectName, setProjectName] = useState<string>("");
-  const [isCreating, setIsCreating] = useState<boolean>(false);
   const [view, setView] = useState<"main" | "create">("main");
-  const [error, setError] = useState<string>("");
+  const action = useAsyncAction();
 
   useEffect(() => {
     const savedProjects = loadProjects();
@@ -40,14 +40,11 @@ function ProjectStartup({ onProjectReady }: ProjectStartupProps) {
 
   const handleCreateProject = async () => {
     if (!projectName.trim()) {
-      setError(t('startup.errorNoName'));
+      action.setError(t('startup.errorNoName'));
       return;
     }
 
-    setIsCreating(true);
-    setError("");
-
-    try {
+    await action.run(async () => {
       const { open } = await import("@tauri-apps/plugin-dialog");
 
       const selectedPath = await open({
@@ -68,11 +65,7 @@ function ProjectStartup({ onProjectReady }: ProjectStartupProps) {
         setCurrentProject(project);
         onProjectReady(project);
       }
-    } catch (err) {
-      setError(String(err));
-    } finally {
-      setIsCreating(false);
-    }
+    });
   };
 
   const handleOpenProject = async (project: Project) => {
@@ -81,7 +74,7 @@ function ProjectStartup({ onProjectReady }: ProjectStartupProps) {
   };
 
   const handleBrowseProject = async () => {
-    try {
+    await action.run(async () => {
       const { open } = await import("@tauri-apps/plugin-dialog");
 
       const selectedPath = await open({
@@ -96,9 +89,7 @@ function ProjectStartup({ onProjectReady }: ProjectStartupProps) {
         setCurrentProject(project);
         onProjectReady(project);
       }
-    } catch (err) {
-      setError(String(err));
-    }
+    });
   };
 
   if (view === "create") {
@@ -118,7 +109,7 @@ function ProjectStartup({ onProjectReady }: ProjectStartupProps) {
               autoFocus
             />
 
-            {error && <div className="error-message">{error}</div>}
+            {action.error && <div className="error-message">{action.error}</div>}
 
             <div className="form-actions">
               <button
@@ -129,10 +120,10 @@ function ProjectStartup({ onProjectReady }: ProjectStartupProps) {
               </button>
               <button
                 onClick={handleCreateProject}
-                disabled={isCreating || !projectName.trim()}
+                disabled={action.isLoading || !projectName.trim()}
                 className="btn-primary"
               >
-                {isCreating ? t('startup.creating') : t('startup.createProject')}
+                {action.isLoading ? t('startup.creating') : t('startup.createProject')}
               </button>
             </div>
           </div>
@@ -191,7 +182,7 @@ function ProjectStartup({ onProjectReady }: ProjectStartupProps) {
           </div>
         )}
 
-        {error && <div className="error-message">{error}</div>}
+        {action.error && <div className="error-message">{action.error}</div>}
       </div>
     </div>
   );

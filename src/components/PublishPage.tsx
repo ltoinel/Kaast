@@ -43,11 +43,12 @@ function formatFileSize(bytes: number): string {
 interface PublishPageProps {
   audioClips: AudioClip[];
   videoClips: VideoClip[];
+  totalDuration: number;
   projectPath?: string;
   projectName?: string;
 }
 
-function PublishPage({ audioClips, videoClips, projectPath, projectName }: PublishPageProps) {
+function PublishPage({ audioClips, videoClips, totalDuration, projectPath, projectName }: PublishPageProps) {
   const { t } = useTranslation();
   const [quality, setQuality] = useState<ExportQuality>("medium");
   const [format, setFormat] = useState<ExportFormat>("h264");
@@ -57,14 +58,6 @@ function PublishPage({ audioClips, videoClips, projectPath, projectName }: Publi
   const [error, setError] = useState<string>("");
   const [exportResult, setExportResult] = useState<string>("");
   const unlistenRef = useRef<(() => void) | null>(null);
-
-  const totalDuration = useMemo(() => {
-    return Math.max(
-      ...audioClips.map(c => c.startTime + c.duration),
-      ...videoClips.map(c => c.startTime + c.duration),
-      0
-    );
-  }, [audioClips, videoClips]);
 
   const hasMedia = audioClips.length > 0 || videoClips.length > 0;
 

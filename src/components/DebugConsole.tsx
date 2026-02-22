@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, memo } from "react";
 import { useTranslation } from "react-i18next";
 import "./DebugConsole.css";
 
@@ -169,4 +169,4 @@ function DebugConsole({ onClose }: DebugConsoleProps) {
   );
 }
 
-export default DebugConsole;
+export default memo(DebugConsole);

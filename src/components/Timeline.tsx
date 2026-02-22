@@ -1,13 +1,15 @@
-import { useState, useRef, useEffect, useMemo, useCallback } from "react";
+import { useState, useRef, useEffect, useMemo, useCallback, memo } from "react";
 import { useTranslation } from "react-i18next";
 import "./Timeline.css";
 import { formatTime } from "../utils/timecode";
+import { computeTotalDuration } from "../utils/duration";
 import type { AudioClip, VideoClip } from "../types";
 export type { AudioClip, VideoClip };
 
 interface TimelineProps {
   audioClips?: AudioClip[];
   videoClips?: VideoClip[];
+  totalDuration?: number;
   resolvedUrls?: Record<string, string>;
   selectedClipId?: string | null;
   onClipSelect?: (clipId: string, type: "audio" | "video") => void;
@@ -21,6 +23,7 @@ interface TimelineProps {
 function Timeline({
   audioClips = [],
   videoClips = [],
+  totalDuration: totalDurationProp,
   resolvedUrls = {},
   selectedClipId: externalSelectedClip,
   onClipSelect,
@@ -49,10 +52,9 @@ function Timeline({
   const isPlaying = externalIsPlaying !== undefined ? externalIsPlaying : internalIsPlaying;
   const currentTime = externalCurrentTime !== undefined ? externalCurrentTime : internalCurrentTime;
 
-  const totalDuration = Math.max(
-    ...audioClips.map(c => c.startTime + c.duration),
-    ...videoClips.map(c => c.startTime + c.duration),
-    60
+  const effectiveDuration = Math.max(
+    totalDurationProp ?? computeTotalDuration(audioClips, videoClips),
+    60,
   );
 
   /** Snap a time value to the nearest grid step (1 second per zoom pixel) */
@@ -64,11 +66,11 @@ function Timeline({
   const timeMarkers = useMemo(() => {
     const markers: number[] = [];
     const interval = 10;
-    for (let i = 0; i <= totalDuration; i += interval) {
+    for (let i = 0; i <= effectiveDuration; i += interval) {
       markers.push(i);
     }
     return markers;
-  }, [totalDuration]);
+  }, [effectiveDuration]);
 
   const waveformHeights = useMemo(() => {
     const heights: Record<string, number[]> = {};
@@ -100,8 +102,8 @@ function Timeline({
     if (!rulerRef.current) return 0;
     const rect = rulerRef.current.getBoundingClientRect();
     const x = clientX - rect.left;
-    return Math.max(0, Math.min(totalDuration, x / zoom));
-  }, [zoom, totalDuration]);
+    return Math.max(0, Math.min(effectiveDuration, x / zoom));
+  }, [zoom, effectiveDuration]);
 
   /** Start scrubbing on mousedown — playhead follows mouse */
   const handleRulerMouseDown = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
@@ -217,7 +219,7 @@ function Timeline({
         <div
           ref={rulerRef}
           className="timeline-ruler"
-          style={{ width: totalDuration * zoom }}
+          style={{ width: effectiveDuration * zoom }}
           onMouseDown={handleRulerMouseDown}
         >
           {timeMarkers.map(marker => (
@@ -239,7 +241,7 @@ function Timeline({
           <div className="track-label">{"\uD83C\uDFA5"} {t('timeline.videoTrack')}</div>
           <div
             className={`track-content ${dragOverTrack === "video" ? "drag-over" : ""}`}
-            style={{ width: totalDuration * zoom }}
+            style={{ width: effectiveDuration * zoom }}
             onDragOver={(e) => handleDragOver(e, "video")}
             onDragLeave={handleDragLeave}
             onDrop={(e) => handleDrop(e, "video")}
@@ -285,7 +287,7 @@ function Timeline({
           <div className="track-label">{"\uD83C\uDF99\uFE0F"} {t('timeline.audioTrack')}</div>
           <div
             className={`track-content ${dragOverTrack === "audio" ? "drag-over" : ""}`}
-            style={{ width: totalDuration * zoom }}
+            style={{ width: effectiveDuration * zoom }}
             onDragOver={(e) => handleDragOver(e, "audio")}
             onDragLeave={handleDragLeave}
             onDrop={(e) => handleDrop(e, "audio")}
@@ -339,4 +341,4 @@ function Timeline({
   );
 }
 
-export default Timeline;
+export default memo(Timeline);

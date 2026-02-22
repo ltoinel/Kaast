@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback, useMemo, memo } from "react";
 import { useTranslation } from "react-i18next";
 import { marked } from "marked";
-import { safeInvoke, getTauriErrorMessage } from "../utils/tauri";
+import DOMPurify from "dompurify";
+import { safeInvoke } from "../utils/tauri";
 import { getStoredStylePrompt, getStoredVoiceStylePrompt } from "./StyleEditor";
 import { getCurrentProject } from "../utils/project";
 import { useMediaDuration } from "../hooks/useMediaDuration";
@@ -9,6 +10,8 @@ import { formatTime } from "../utils/timecode";
 import type { AudioClip } from "../types";
 import type { PlaybackHandle } from "../hooks/usePlaybackSync";
 import { usePlaybackTime } from "../hooks/usePlaybackSync";
+import { useAsyncAction } from "../hooks/useAsyncAction";
+import { computeTotalDuration } from "../utils/duration";
 import "./ScriptEditor.css";
 
 declare global {
@@ -76,18 +79,18 @@ function ScriptEditor({ audioClips, onAudioGenerated, onOpenSettings, playback, 
   const currentTime = usePlaybackTime(playback, isActive);
   const [script, setScript] = useState<string>("");
   const [url, setUrl] = useState<string>("");
-  const [isGenerating, setIsGenerating] = useState<boolean>(false);
-  const [isGeneratingAudio, setIsGeneratingAudio] = useState<boolean>(false);
-  const [error, setError] = useState<string>("");
+  const scriptAction = useAsyncAction();
+  const audioAction = useAsyncAction();
   const [success, setSuccess] = useState<string>("");
   const [lastSaved, setLastSaved] = useState<string>("");
   const [viewMode, setViewMode] = useState<ViewMode>("split");
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState<boolean>(false);
 
   // Total audio duration (for UI display only — playback is managed by App)
-  const totalDuration = useMemo(() => {
-    return Math.max(...audioClips.map(c => c.startTime + c.duration), 0);
-  }, [audioClips]);
+  const totalDuration = useMemo(
+    () => computeTotalDuration(audioClips, []),
+    [audioClips],
+  );
 
   const handleSeekInput = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     playback.handleSeek(parseFloat(e.target.value));
@@ -152,9 +155,10 @@ function ScriptEditor({ audioClips, onAudioGenerated, onOpenSettings, playback, 
 
   const renderedMarkdown = useMemo(() => {
     if (!script.trim()) return "";
-    const html = marked.parse(script) as string;
+    const rawHtml = marked.parse(script) as string;
+    const cleanHtml = DOMPurify.sanitize(rawHtml);
     // Highlight bracketed text [like this] in bold green
-    return html.replace(/(\[[^\]]+\])/g, '<span class="script-stage-direction">$1</span>');
+    return cleanHtml.replace(/(\[[^\]]+\])/g, '<span class="script-stage-direction">$1</span>');
   }, [script]);
 
   const getApiKey = useCallback((): string | null => {
@@ -164,21 +168,18 @@ function ScriptEditor({ audioClips, onAudioGenerated, onOpenSettings, playback, 
   const generateScript = async () => {
     const apiKey = getApiKey();
     if (!apiKey) {
-      setError(t('script.errorNoApiKey'));
+      scriptAction.setError(t('script.errorNoApiKey'));
       if (onOpenSettings) onOpenSettings();
       return;
     }
 
     if (!url.trim()) {
-      setError(t('script.errorNoUrl'));
+      scriptAction.setError(t('script.errorNoUrl'));
       return;
     }
 
-    setIsGenerating(true);
-    setError("");
     setSuccess("");
-
-    try {
+    await scriptAction.run(async () => {
       const stylePrompt = getStoredStylePrompt();
       let generatedScript = await safeInvoke<string>("generate_podcast_script", {
         url: url.trim(),
@@ -193,37 +194,30 @@ function ScriptEditor({ audioClips, onAudioGenerated, onOpenSettings, playback, 
       setHasUnsavedChanges(true);
       setSuccess(t('script.successGenerated'));
       setUrl("");
-    } catch (err) {
-      setError(getTauriErrorMessage(err));
-    } finally {
-      setIsGenerating(false);
-    }
+    });
   };
 
   const generateAudio = async () => {
     const apiKey = getApiKey();
     if (!apiKey) {
-      setError(t('script.errorNoApiKey'));
+      audioAction.setError(t('script.errorNoApiKey'));
       if (onOpenSettings) onOpenSettings();
       return;
     }
 
     if (!script.trim()) {
-      setError(t('script.errorEmptyScript'));
+      audioAction.setError(t('script.errorEmptyScript'));
       return;
     }
 
     const project = getCurrentProject();
     if (!project) {
-      setError(t('script.errorNoProject'));
+      audioAction.setError(t('script.errorNoProject'));
       return;
     }
 
-    setIsGeneratingAudio(true);
-    setError("");
     setSuccess("");
-
-    try {
+    await audioAction.run(async () => {
       const { mkdir, readDir, remove } = await import("@tauri-apps/plugin-fs");
 
       const audioDir = `${project.path}/audios`;
@@ -263,11 +257,7 @@ function ScriptEditor({ audioClips, onAudioGenerated, onOpenSettings, playback, 
       if (onAudioGenerated) {
         onAudioGenerated(resultPath, realDuration);
       }
-    } catch (err) {
-      setError(getTauriErrorMessage(err));
-    } finally {
-      setIsGeneratingAudio(false);
-    }
+    });
   };
 
   const wordCount = useMemo(() => script.split(/\s+/).filter(w => w).length, [script]);
@@ -287,14 +277,14 @@ function ScriptEditor({ audioClips, onAudioGenerated, onOpenSettings, playback, 
               onChange={(e) => setUrl(e.target.value)}
               placeholder={t('script.urlPlaceholder')}
               className="url-input"
-              disabled={isGenerating}
+              disabled={scriptAction.isLoading}
             />
             <button
               onClick={generateScript}
-              disabled={isGenerating || !url.trim()}
+              disabled={scriptAction.isLoading || !url.trim()}
               className="btn btn-primary toolbar-btn"
             >
-              {isGenerating ? (
+              {scriptAction.isLoading ? (
                 <>
                   <span className="spinner" />
                   {t('script.generating')}
@@ -347,10 +337,10 @@ function ScriptEditor({ audioClips, onAudioGenerated, onOpenSettings, playback, 
           </button>
           <button
             onClick={generateAudio}
-            disabled={isGeneratingAudio || !script.trim()}
+            disabled={audioAction.isLoading || !script.trim()}
             className="btn btn-success toolbar-btn"
           >
-            {isGeneratingAudio ? (
+            {audioAction.isLoading ? (
               <>
                 <span className="spinner" />
                 {t('script.generatingAudio')}
@@ -365,7 +355,7 @@ function ScriptEditor({ audioClips, onAudioGenerated, onOpenSettings, playback, 
         </div>
       </div>
 
-      {error && <div className="message error">{error}</div>}
+      {(scriptAction.error || audioAction.error) && <div className="message error">{scriptAction.error || audioAction.error}</div>}
       {success && <div className="message success">{success}</div>}
 
       {/* Audio Player */}

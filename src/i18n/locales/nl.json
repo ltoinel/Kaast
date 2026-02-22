@@ -213,5 +213,9 @@
   "startup.createProject": "Project aanmaken",
   "startup.errorNoName": "Voer een projectnaam in",
   "startup.chooseFolder": "Kies projectmap",
-  "startup.openExistingProject": "Open een bestaand project"
+  "startup.openExistingProject": "Open een bestaand project",
+
+  "errorBoundary.title": "Er ging iets mis",
+  "errorBoundary.unknown": "Er is een onverwachte fout opgetreden in dit gedeelte.",
+  "errorBoundary.retry": "Opnieuw proberen"
 }

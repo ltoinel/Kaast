@@ -213,5 +213,9 @@
   "startup.createProject": "Create project",
   "startup.errorNoName": "Please enter a project name",
   "startup.chooseFolder": "Choose project folder",
-  "startup.openExistingProject": "Open an existing project"
+  "startup.openExistingProject": "Open an existing project",
+
+  "errorBoundary.title": "Something went wrong",
+  "errorBoundary.unknown": "An unexpected error occurred in this section.",
+  "errorBoundary.retry": "Retry"
 }

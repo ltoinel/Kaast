@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo, memo } from "react";
+import { useState, useEffect, useCallback, memo } from "react";
 import { useTranslation } from "react-i18next";
 import "./EditPage.css";
 import type { AudioClip, VideoClip } from "../types";
@@ -11,6 +11,7 @@ import { formatTimecode } from "../utils/timecode";
 interface EditPageProps {
   audioClips: AudioClip[];
   videoClips: VideoClip[];
+  totalDuration: number;
   onAddMedia?: () => void;
   onDeleteClip?: (clipId: string, type: "audio" | "video") => void;
   onMoveClip?: (clipId: string, type: "audio" | "video", newStartTime: number) => void;
@@ -22,20 +23,11 @@ interface EditPageProps {
   onVolumeChange: (volume: number) => void;
 }
 
-function EditPage({ audioClips, videoClips, onAddMedia, onDeleteClip, onMoveClip, isTabActive = true, playback, resolvedUrls, volume, onVolumeChange }: EditPageProps) {
+function EditPage({ audioClips, videoClips, totalDuration, onAddMedia, onDeleteClip, onMoveClip, isTabActive = true, playback, resolvedUrls, volume, onVolumeChange }: EditPageProps) {
   const { t } = useTranslation();
   const [selectedClip, setSelectedClip] = useState<AudioClip | VideoClip | null>(null);
   const [selectedClipType, setSelectedClipType] = useState<"audio" | "video" | null>(null);
   const currentTime = usePlaybackTime(playback, isTabActive);
-
-  // Compute total duration from all clips (for timecode display)
-  const totalDuration = useMemo(() => {
-    return Math.max(
-      ...audioClips.map(c => c.startTime + c.duration),
-      ...videoClips.map(c => c.startTime + c.duration),
-      0
-    );
-  }, [audioClips, videoClips]);
 
   // Delete selected clip with Delete key
   useEffect(() => {
@@ -264,6 +256,7 @@ function EditPage({ audioClips, videoClips, onAddMedia, onDeleteClip, onMoveClip
         <Timeline
           audioClips={audioClips}
           videoClips={videoClips}
+          totalDuration={totalDuration}
           resolvedUrls={resolvedUrls}
           selectedClipId={selectedClip?.id ?? null}
           onClipSelect={handleClipSelect}

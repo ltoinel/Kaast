@@ -213,5 +213,9 @@
   "startup.createProject": "Crea progetto",
   "startup.errorNoName": "Inserisci un nome per il progetto",
   "startup.chooseFolder": "Scegli cartella progetto",
-  "startup.openExistingProject": "Apri un progetto esistente"
+  "startup.openExistingProject": "Apri un progetto esistente",
+
+  "errorBoundary.title": "Qualcosa è andato storto",
+  "errorBoundary.unknown": "Si è verificato un errore imprevisto in questa sezione.",
+  "errorBoundary.retry": "Riprova"
 }
