@@ -202,7 +202,7 @@ function App() {
   }, [videoClips]);
 
   // Load audio files from project directory
-  const loadProjectAudioFiles = useCallback(async (projectPath: string) => {
+  const loadProjectAudioFiles = useCallback(async (projectPath: string, signal?: { cancelled: boolean }) => {
     if (!isTauriAvailable()) return;
 
     try {
@@ -222,6 +222,7 @@ function App() {
         let offset = 0;
         const newClips: AudioClip[] = [];
         for (let index = 0; index < audioFiles.length; index++) {
+          if (signal?.cancelled) return;
           const file = audioFiles[index];
           const filePath = `${projectPath}/${file.name}`;
           const { duration: realDuration } = await probe(filePath);
@@ -234,12 +235,12 @@ function App() {
           });
           offset += realDuration;
         }
-        setAudioClips(newClips);
+        if (!signal?.cancelled) setAudioClips(newClips);
       }
     } catch (error) {
       console.log("No audio files found:", error);
     }
-  }, []);
+  }, [probe]);
 
   // Save timeline to project JSON file
   const saveTimeline = useCallback(async () => {
@@ -266,13 +267,14 @@ function App() {
   }, [currentProject, audioClips, videoClips]);
 
   // Load timeline from project JSON file
-  const loadTimeline = useCallback(async (projectPath: string) => {
+  const loadTimeline = useCallback(async (projectPath: string, signal?: { cancelled: boolean }) => {
     if (!isTauriAvailable()) return;
 
     try {
       const { readTextFile } = await import("@tauri-apps/plugin-fs");
       const timelinePath = `${projectPath}/timeline.json`;
       const content = await readTextFile(timelinePath);
+      if (signal?.cancelled) return;
       const data = JSON.parse(content);
 
       if (data.audioClips && Array.isArray(data.audioClips)) {
@@ -283,15 +285,19 @@ function App() {
       }
       lastSaveRef.current = JSON.stringify(data, null, 2);
     } catch {
-      await loadProjectAudioFiles(projectPath);
+      await loadProjectAudioFiles(projectPath, signal);
     }
   }, [loadProjectAudioFiles]);
+
+  // Keep a ref to the latest saveTimeline to avoid restarting the interval on every clip change
+  const saveTimelineRef = useRef(saveTimeline);
+  saveTimelineRef.current = saveTimeline;
 
   // Auto-save every minute
   useEffect(() => {
     if (currentProject && !showStartup) {
       autoSaveRef.current = window.setInterval(() => {
-        saveTimeline();
+        saveTimelineRef.current();
       }, 60000);
     }
 
@@ -301,15 +307,17 @@ function App() {
         autoSaveRef.current = null;
       }
     };
-  }, [currentProject, showStartup, saveTimeline]);
+  }, [currentProject, showStartup]);
 
   useEffect(() => {
+    const signal = { cancelled: false };
     const savedProject = getCurrentProject();
     if (savedProject) {
       setProject(savedProject);
       setShowStartup(false);
-      loadTimeline(savedProject.path);
+      loadTimeline(savedProject.path, signal);
     }
+    return () => { signal.cancelled = true; };
   }, [loadTimeline]);
 
   const handleProjectReady = useCallback((project: Project) => {
