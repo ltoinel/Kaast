@@ -88,6 +88,9 @@
   "settings.aboutTitle": "Acerca de Kaast",
   "settings.aboutDescription": "Editor de podcast con IA",
   "settings.aboutText": "Kaast utiliza la API de Gemini para generar guiones de podcast y voces naturales a partir de tus fuentes.",
+  "settings.licenseText": "Distribuido bajo la licencia MIT.",
+  "settings.ffmpegNotice": "Esta aplicación utiliza FFmpeg (ffmpeg.org), bajo la licencia GNU General Public License v3.",
+  "settings.thirdPartyNotices": "Consulta THIRD-PARTY-NOTICES para más detalles.",
   "settings.languageTitle": "Idioma",
   "settings.languageDescription": "Idioma de visualización de la aplicación",
 

@@ -1,0 +1,168 @@
+Third-Party Software Notices and Licenses
+==========================================
+
+Kaast incorporates third-party software components under the following licenses.
+
+================================================================================
+MIT License
+================================================================================
+
+The following components are licensed under the MIT License:
+
+  - React (https://github.com/facebook/react)
+    Copyright (c) Meta Platforms, Inc. and affiliates.
+
+  - React DOM (https://github.com/facebook/react)
+    Copyright (c) Meta Platforms, Inc. and affiliates.
+
+  - i18next (https://github.com/i18next/i18next)
+    Copyright (c) i18next contributors.
+
+  - i18next-browser-languagedetector (https://github.com/i18next/i18next-browser-languageDetector)
+    Copyright (c) i18next contributors.
+
+  - react-i18next (https://github.com/i18next/react-i18next)
+    Copyright (c) i18next contributors.
+
+  - marked (https://github.com/markedjs/marked)
+    Copyright (c) Christopher Jeffrey and marked contributors.
+
+  - Vite (https://github.com/vitejs/vite)
+    Copyright (c) Evan You and Vite contributors.
+
+  - @vitejs/plugin-react (https://github.com/vitejs/vite-plugin-react)
+    Copyright (c) Evan You and Vite contributors.
+
+  - Tokio (https://github.com/tokio-rs/tokio)
+    Copyright (c) Tokio contributors.
+
+  - Axum (https://github.com/tokio-rs/axum)
+    Copyright (c) Tokio contributors.
+
+  - tokio-util (https://github.com/tokio-rs/tokio)
+    Copyright (c) Tokio contributors.
+
+MIT License Text:
+
+  Permission is hereby granted, free of charge, to any person obtaining a copy
+  of this software and associated documentation files (the "Software"), to deal
+  in the Software without restriction, including without limitation the rights
+  to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+  copies of the Software, and to permit persons to whom the Software is
+  furnished to do so, subject to the following conditions:
+
+  The above copyright notice and this permission notice shall be included in all
+  copies or substantial portions of the Software.
+
+  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+  IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+  FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+  AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+  LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+  SOFTWARE.
+
+================================================================================
+MIT OR Apache-2.0 (Dual License)
+================================================================================
+
+The following components are available under either the MIT License (above)
+or the Apache License 2.0 (below), at your option:
+
+  - Tauri (https://github.com/tauri-apps/tauri)
+    Copyright (c) Tauri Programme within The Commons Conservancy.
+
+  - @tauri-apps/api (https://github.com/tauri-apps/tauri)
+    Copyright (c) Tauri Programme within The Commons Conservancy.
+
+  - tauri-plugin-shell (https://github.com/tauri-apps/plugins-workspace)
+    Copyright (c) Tauri Programme within The Commons Conservancy.
+
+  - tauri-plugin-dialog (https://github.com/tauri-apps/plugins-workspace)
+    Copyright (c) Tauri Programme within The Commons Conservancy.
+
+  - tauri-plugin-fs (https://github.com/tauri-apps/plugins-workspace)
+    Copyright (c) Tauri Programme within The Commons Conservancy.
+
+  - Serde (https://github.com/serde-rs/serde)
+    Copyright (c) David Tolnay and Serde contributors.
+
+  - serde_json (https://github.com/serde-rs/json)
+    Copyright (c) David Tolnay and serde_json contributors.
+
+  - Reqwest (https://github.com/seanmonstar/reqwest)
+    Copyright (c) Sean McArthur and Reqwest contributors.
+
+  - base64 (https://github.com/marshallpierce/rust-base64)
+    Copyright (c) Alice Maz and Marshall Pierce.
+
+================================================================================
+Apache License 2.0
+================================================================================
+
+The following component is licensed under the Apache License 2.0:
+
+  - TypeScript (https://github.com/microsoft/TypeScript)
+    Copyright (c) Microsoft Corporation.
+
+Apache License 2.0 Text:
+
+  Licensed under the Apache License, Version 2.0 (the "License");
+  you may not use this file except in compliance with the License.
+  You may obtain a copy of the License at
+
+      http://www.apache.org/licenses/LICENSE-2.0
+
+  Unless required by applicable law or agreed to in writing, software
+  distributed under the License is distributed on an "AS IS" BASIS,
+  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+  See the License for the specific language governing permissions and
+  limitations under the License.
+
+================================================================================
+ISC License
+================================================================================
+
+The following component is licensed under the ISC License:
+
+  - scraper (https://github.com/causal-agent/scraper)
+    Copyright (c) scraper contributors.
+
+ISC License Text:
+
+  Permission to use, copy, modify, and/or distribute this software for any
+  purpose with or without fee is hereby granted, provided that the above
+  copyright notice and this permission notice appear in all copies.
+
+  THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH
+  REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY
+  AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT,
+  INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM
+  LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR
+  OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR
+  PERFORMANCE OF THIS SOFTWARE.
+
+================================================================================
+GNU General Public License v3.0 (GPLv3)
+================================================================================
+
+The following component is distributed as a standalone sidecar binary and is
+licensed under the GNU General Public License version 3:
+
+  - FFmpeg (https://ffmpeg.org)
+    Copyright (c) FFmpeg developers.
+
+  FFmpeg is invoked as a separate process and is NOT linked into the Kaast
+  application. The Kaast source code is independently licensed under the MIT
+  License and is NOT a derivative work of FFmpeg.
+
+  The full text of the GNU General Public License v3.0 is available at:
+  https://www.gnu.org/licenses/gpl-3.0.html
+
+  The source code for FFmpeg can be obtained at:
+  https://ffmpeg.org/download.html
+
+  The specific builds bundled with Kaast are sourced from:
+  - Windows: https://www.gyan.dev/ffmpeg/builds/
+  - Linux:   https://johnvansickle.com/ffmpeg/
+  - macOS:   https://evermeet.cx/ffmpeg/

@@ -132,8 +132,14 @@ function Settings({ onClose }: SettingsProps) {
                 {t('settings.save')}
               </button>
               {apiKey && (
-                <button onClick={handleClear} className="btn btn-secondary">
-                  {t('settings.delete')}
+                <button
+                  onClick={handleClear}
+                  className="btn btn-secondary btn-icon"
+                  title={t('settings.delete')}
+                >
+                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M2 4h12M5.333 4V2.667a1.333 1.333 0 0 1 1.334-1.334h2.666a1.333 1.333 0 0 1 1.334 1.334V4m2 0v9.333a1.333 1.333 0 0 1-1.334 1.334H4.667a1.333 1.333 0 0 1-1.334-1.334V4h9.334Z" stroke="currentColor" strokeWidth="1.33" strokeLinecap="round" strokeLinejoin="round"/>
+                  </svg>
                 </button>
               )}
               <a
@@ -196,8 +202,14 @@ function Settings({ onClose }: SettingsProps) {
                 {t('settings.save')}
               </button>
               {pexelsApiKey && (
-                <button onClick={handlePexelsClear} className="btn btn-secondary">
-                  {t('settings.delete')}
+                <button
+                  onClick={handlePexelsClear}
+                  className="btn btn-secondary btn-icon"
+                  title={t('settings.delete')}
+                >
+                  <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M2 4h12M5.333 4V2.667a1.333 1.333 0 0 1 1.334-1.334h2.666a1.333 1.333 0 0 1 1.334 1.334V4m2 0v9.333a1.333 1.333 0 0 1-1.334 1.334H4.667a1.333 1.333 0 0 1-1.334-1.334V4h9.334Z" stroke="currentColor" strokeWidth="1.33" strokeLinecap="round" strokeLinejoin="round"/>
+                  </svg>
                 </button>
               )}
               <a
@@ -283,6 +295,15 @@ function Settings({ onClose }: SettingsProps) {
               <p>Version 1.0.0</p>
               <p className="text-muted">
                 {t('settings.aboutText')}
+              </p>
+              <p className="text-muted">
+                {t('settings.licenseText')}
+              </p>
+              <p className="text-muted">
+                {t('settings.ffmpegNotice')}
+              </p>
+              <p className="text-muted">
+                {t('settings.thirdPartyNotices')}
               </p>
             </div>
           </section>

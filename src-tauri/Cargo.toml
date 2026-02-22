@@ -4,6 +4,7 @@ version = "0.1.0"
 description = "Kaast: an AI-powered podcast editor for Windows, Linux, and macOS"
 authors = ["vous"]
 edition = "2021"
+license = "MIT"
 
 [build-dependencies]
 tauri-build = { version = "2.0", features = [] }
