@@ -1,6 +1,12 @@
 # Kaast
 
+> **Status: Alpha** — Kaast is under active development. Features may change, and bugs are expected.
+
 Kaast is a desktop application that turns any web article into a ready-to-publish video podcast. Paste a URL, and Kaast handles the rest: AI generates the script, synthesizes the voice, selects matching stock footage, and assembles everything into an MP4. It runs natively on Windows, macOS, and Linux.
+
+![Scenes — AI-generated video scenes with stock footage](doc/screenshots/screenshot-scenes.png)
+
+![Timeline editor — Multi-track audio/video editing](doc/screenshots/screenshot-montage.png)
 
 ## Features
 
@@ -13,7 +19,7 @@ Kaast is a desktop application that turns any web article into a ready-to-publis
 
 ### Editing & export
 - ✂️ **Timeline editor** — Arrange audio and video clips on a multi-track timeline
-- 🎞️ **Real-time preview** — Frame-perfect playback with Remotion Player
+- 🎞️ **Real-time preview** — Streaming playback with double-buffered video
 - ✨ **Transitions** — Fade, dissolve, wipe between video clips
 - 📤 **MP4 export** — Configurable quality presets with real-time progress
 - 📦 **Embedded FFmpeg** — No manual installation needed
@@ -26,7 +32,7 @@ Kaast is a desktop application that turns any web article into a ready-to-publis
 
 - **Frontend**: React 18 + TypeScript + Vite
 - **Backend**: Rust + Tauri 2.0
-- **Preview**: Remotion Player (frame-perfect audio/video playback)
+- **Preview**: HTML5 streaming with double-buffered video
 - **Video Processing**: FFmpeg / FFprobe (bundled as Tauri sidecar)
 - **AI**: Google Gemini API (script generation, voice synthesis, scene analysis)
 - **Stock Footage**: Pexels API
