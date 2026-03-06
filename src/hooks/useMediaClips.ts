@@ -81,7 +81,7 @@ export function useMediaClips(
         }
         if (!signal?.cancelled) setAudioClips(newClips);
       }
-    } catch (error) {
+    } catch {
       // No audio files in project directory
     }
   }, [probe]);

@@ -170,18 +170,6 @@ function StyleEditor() {
   });
   const [lastSaved, setLastSaved] = useState<string>("");
 
-  // Ctrl+S / Cmd+S shortcut
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && e.key === "s") {
-        e.preventDefault();
-        handleSave();
-      }
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [activeTab, prompts]);
-
   /** Update the active tab's prompt text. */
   const handleChange = useCallback(
     (value: string) => {
@@ -197,6 +185,18 @@ function StyleEditor() {
     setLastSaved(new Date().toLocaleTimeString());
     setUnsaved((prev) => ({ ...prev, [activeTab]: false }));
   }, [activeTab, prompts]);
+
+  // Ctrl+S / Cmd+S shortcut
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === "s") {
+        e.preventDefault();
+        handleSave();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [handleSave]);
 
   /** Reset the active tab's prompt to the built-in default. */
   const handleReset = useCallback(() => {

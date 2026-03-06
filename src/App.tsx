@@ -125,56 +125,72 @@ function App() {
   return (
     <div className="app">
       {/* Sidebar */}
-      <aside className="app-sidebar">
+      <aside className="app-sidebar" aria-label="Main navigation">
         <div className="sidebar-header">
           <button
             className="new-project-btn"
             onClick={handleNewProject}
             title={t('app.newProject')}
+            aria-label={t('app.newProject')}
           >
             <IconPlus />
           </button>
         </div>
 
-        <nav className="sidebar-nav">
+        <nav className="sidebar-nav" role="tablist" aria-orientation="vertical">
           <button
             className={`nav-item ${activeTab === "style" ? "active" : ""}`}
             onClick={() => setActiveTab("style")}
             title={t('app.style')}
+            aria-label={t('app.style')}
+            role="tab"
+            aria-selected={activeTab === "style"}
           >
-            <span className="nav-icon"><IconPalette /></span>
+            <span className="nav-icon" aria-hidden="true"><IconPalette /></span>
           </button>
 
           <button
             className={`nav-item ${activeTab === "editor" ? "active" : ""}`}
             onClick={() => setActiveTab("editor")}
             title={t('app.script')}
+            aria-label={t('app.script')}
+            role="tab"
+            aria-selected={activeTab === "editor"}
           >
-            <span className="nav-icon"><IconDocument /></span>
+            <span className="nav-icon" aria-hidden="true"><IconDocument /></span>
           </button>
 
           <button
             className={`nav-item ${activeTab === "scenes" ? "active" : ""}`}
             onClick={() => setActiveTab("scenes")}
             title={t('app.scenes')}
+            aria-label={t('app.scenes')}
+            role="tab"
+            aria-selected={activeTab === "scenes"}
           >
-            <span className="nav-icon"><IconFilm /></span>
+            <span className="nav-icon" aria-hidden="true"><IconFilm /></span>
           </button>
 
           <button
             className={`nav-item ${activeTab === "edit" ? "active" : ""}`}
             onClick={() => setActiveTab("edit")}
             title={t('app.edit')}
+            aria-label={t('app.edit')}
+            role="tab"
+            aria-selected={activeTab === "edit"}
           >
-            <span className="nav-icon"><IconScissors /></span>
+            <span className="nav-icon" aria-hidden="true"><IconScissors /></span>
           </button>
 
           <button
             className={`nav-item ${activeTab === "publish" ? "active" : ""}`}
             onClick={() => setActiveTab("publish")}
             title={t('app.publish')}
+            aria-label={t('app.publish')}
+            role="tab"
+            aria-selected={activeTab === "publish"}
           >
-            <span className="nav-icon"><IconUpload /></span>
+            <span className="nav-icon" aria-hidden="true"><IconUpload /></span>
           </button>
         </nav>
 
@@ -183,15 +199,18 @@ function App() {
             className={`nav-item ${activeTab === "settings" ? "active" : ""}`}
             onClick={() => setActiveTab("settings")}
             title={t('app.settings')}
+            aria-label={t('app.settings')}
           >
-            <span className="nav-icon"><IconGear /></span>
+            <span className="nav-icon" aria-hidden="true"><IconGear /></span>
           </button>
           <button
             className={`nav-item ${showConsole ? "active" : ""}`}
             onClick={() => setShowConsole(!showConsole)}
             title={t('app.console')}
+            aria-label={t('app.console')}
+            aria-pressed={showConsole}
           >
-            <span className="nav-icon"><IconTerminal /></span>
+            <span className="nav-icon" aria-hidden="true"><IconTerminal /></span>
           </button>
         </div>
       </aside>
@@ -219,7 +238,7 @@ function App() {
 
         {/* Tab Content — CSS-based visibility with lazy mounting */}
         <div className="tab-content">
-          <div className={`tab-panel ${activeTab !== "style" ? "tab-panel-hidden" : ""}`}>
+          <div className={`tab-panel ${activeTab !== "style" ? "tab-panel-hidden" : ""}`} role="tabpanel" aria-label={t('app.style')}>
             {visitedTabs.has("style") && (
               <ErrorBoundary name="style">
                 <StyleEditor />
@@ -227,7 +246,7 @@ function App() {
             )}
           </div>
 
-          <div className={`tab-panel ${activeTab !== "editor" ? "tab-panel-hidden" : ""}`}>
+          <div className={`tab-panel ${activeTab !== "editor" ? "tab-panel-hidden" : ""}`} role="tabpanel" aria-label={t('app.script')}>
             {visitedTabs.has("editor") && (
               <ErrorBoundary name="editor">
                 <ScriptEditor
@@ -241,7 +260,7 @@ function App() {
             )}
           </div>
 
-          <div className={`tab-panel ${activeTab !== "scenes" ? "tab-panel-hidden" : ""}`}>
+          <div className={`tab-panel ${activeTab !== "scenes" ? "tab-panel-hidden" : ""}`} role="tabpanel" aria-label={t('app.scenes')}>
             {visitedTabs.has("scenes") && (
               <ErrorBoundary name="scenes">
                 <ScenesPage
@@ -256,7 +275,7 @@ function App() {
             )}
           </div>
 
-          <div className={`tab-panel ${activeTab !== "edit" ? "tab-panel-hidden" : ""}`}>
+          <div className={`tab-panel ${activeTab !== "edit" ? "tab-panel-hidden" : ""}`} role="tabpanel" aria-label={t('app.edit')}>
             {visitedTabs.has("edit") && (
               <ErrorBoundary name="edit">
                 <EditPage
@@ -277,7 +296,7 @@ function App() {
             )}
           </div>
 
-          <div className={`tab-panel ${activeTab !== "publish" ? "tab-panel-hidden" : ""}`}>
+          <div className={`tab-panel ${activeTab !== "publish" ? "tab-panel-hidden" : ""}`} role="tabpanel" aria-label={t('app.publish')}>
             {visitedTabs.has("publish") && (
               <ErrorBoundary name="publish">
                 <PublishPage
@@ -291,7 +310,7 @@ function App() {
             )}
           </div>
 
-          <div className={`tab-panel ${activeTab !== "settings" ? "tab-panel-hidden" : ""}`}>
+          <div className={`tab-panel ${activeTab !== "settings" ? "tab-panel-hidden" : ""}`} role="tabpanel" aria-label={t('app.settings')}>
             {visitedTabs.has("settings") && (
               <ErrorBoundary name="settings">
                 <Settings onClose={() => setActiveTab("editor")} />

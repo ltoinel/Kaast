@@ -1,6 +1,7 @@
 // Prevents additional console window on Windows in release, DO NOT REMOVE!!
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod error;
 mod ffmpeg;
 mod files;
 mod gemini;
@@ -9,6 +10,8 @@ mod sidecar;
 mod streaming;
 
 fn main() {
+    tracing_subscriber::fmt::init();
+
     let port = streaming::start_streaming_server();
 
     tauri::Builder::default()
@@ -16,6 +19,7 @@ fn main() {
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
+        .plugin(tauri_plugin_store::Builder::default().build())
         .invoke_handler(tauri::generate_handler![
             gemini::generate_podcast_script,
             gemini::generate_video_scenes,

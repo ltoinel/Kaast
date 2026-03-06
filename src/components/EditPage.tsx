@@ -174,12 +174,12 @@ function EditPage({ audioClips, videoClips, totalDuration, onAddMedia, onDeleteC
           </div>
 
           {/* Transport Controls */}
-          <div className="transport-controls">
+          <div className="transport-controls" role="toolbar" aria-label={t('edit.previewTitle')}>
             <div className="transport-left">
-              <button className="transport-btn" title={t('edit.goToStart')} onClick={playback.handleStop}>
+              <button className="transport-btn" title={t('edit.goToStart')} aria-label={t('edit.goToStart')} onClick={playback.handleStop}>
                 |&lt;
               </button>
-              <button className="transport-btn" title={t('edit.previousFrame')} onClick={playback.handlePrevFrame}>
+              <button className="transport-btn" title={t('edit.previousFrame')} aria-label={t('edit.previousFrame')} onClick={playback.handlePrevFrame}>
                 &lt;
               </button>
             </div>
@@ -188,21 +188,22 @@ function EditPage({ audioClips, videoClips, totalDuration, onAddMedia, onDeleteC
               className={`transport-btn play-btn ${playback.isPlaying ? "playing" : ""}`}
               onClick={playback.handlePlayPause}
               title={playback.isPlaying ? t('edit.pause') : t('edit.play')}
+              aria-label={playback.isPlaying ? t('edit.pause') : t('edit.play')}
             >
               {playback.isPlaying ? "||" : "\u25B6"}
             </button>
 
             <div className="transport-right">
-              <button className="transport-btn" title={t('edit.nextFrame')} onClick={playback.handleNextFrame}>
+              <button className="transport-btn" title={t('edit.nextFrame')} aria-label={t('edit.nextFrame')} onClick={playback.handleNextFrame}>
                 &gt;
               </button>
-              <button className="transport-btn" title={t('edit.goToEnd')} onClick={playback.handleGoToEnd}>
+              <button className="transport-btn" title={t('edit.goToEnd')} aria-label={t('edit.goToEnd')} onClick={playback.handleGoToEnd}>
                 &gt;|
               </button>
             </div>
 
             <div className="volume-control">
-              <span className="volume-icon">{volume > 0 ? "\u{1F50A}" : "\u{1F507}"}</span>
+              <span className="volume-icon" aria-hidden="true">{volume > 0 ? "\u{1F50A}" : "\u{1F507}"}</span>
               <input
                 type="range"
                 min="0"
@@ -211,6 +212,10 @@ function EditPage({ audioClips, videoClips, totalDuration, onAddMedia, onDeleteC
                 value={volume}
                 onChange={(e) => onVolumeChange(parseFloat(e.target.value))}
                 className="volume-slider"
+                aria-label="Volume"
+                aria-valuemin={0}
+                aria-valuemax={1}
+                aria-valuenow={volume}
               />
             </div>
           </div>

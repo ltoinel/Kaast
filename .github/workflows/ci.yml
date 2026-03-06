@@ -17,7 +17,7 @@ env:
 
 jobs:
   check:
-    name: TypeScript Check
+    name: Lint & Test
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
@@ -29,7 +29,9 @@ jobs:
 
       - run: npm ci
       - run: npx tsc --noEmit
-      - run: npx vitest run
+      - run: npx eslint src/
+      - run: npx stylelint "src/**/*.css"
+      - run: npx vitest run --coverage
 
   test-rust:
     name: Rust Tests

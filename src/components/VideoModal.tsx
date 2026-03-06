@@ -11,7 +11,7 @@ interface VideoModalProps {
 
 function VideoModal({ videoUrl, onClose }: VideoModalProps) {
   return (
-    <div className="scene-modal-backdrop" onClick={onClose}>
+    <div className="scene-modal-backdrop" onClick={onClose} role="dialog" aria-modal="true" aria-label="Video preview">
       <div className="scene-modal" onClick={(e) => e.stopPropagation()}>
         <video
           className="scene-modal-video"
@@ -19,7 +19,7 @@ function VideoModal({ videoUrl, onClose }: VideoModalProps) {
           controls
           autoPlay
         />
-        <button className="scene-modal-close" onClick={onClose}>✕</button>
+        <button className="scene-modal-close" onClick={onClose} aria-label="Close">✕</button>
       </div>
     </div>
   );

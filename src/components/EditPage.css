@@ -64,7 +64,7 @@
   justify-content: center;
   width: 26px;
   height: 26px;
-  background: rgba(255, 255, 255, 0.04);
+  background: rgb(255 255 255 / 4%);
   border: 1px solid var(--border-default);
   border-radius: var(--radius-md);
   color: var(--text-secondary);
@@ -74,10 +74,10 @@
 }
 
 .panel-btn:hover {
-  background: rgba(255, 255, 255, 0.08);
+  background: rgb(255 255 255 / 8%);
   color: var(--text-primary);
   border-color: var(--accent-primary);
-  box-shadow: 0 0 12px rgba(224, 112, 32, 0.15);
+  box-shadow: 0 0 12px rgb(224 112 32 / 15%);
 }
 
 /* Media Browser Panel */
@@ -211,11 +211,11 @@
 
 .tab-btn:hover {
   color: var(--text-secondary);
-  background: rgba(255, 255, 255, 0.04);
+  background: rgb(255 255 255 / 4%);
 }
 
 .tab-btn.active {
-  background: rgba(255, 255, 255, 0.08);
+  background: rgb(255 255 255 / 8%);
   color: var(--text-primary);
 }
 
@@ -267,7 +267,7 @@
   justify-content: center;
   gap: var(--spacing-xs);
   padding: var(--spacing-sm);
-  background: rgba(0, 0, 0, 0.6);
+  background: rgb(0 0 0 / 60%);
 }
 
 .timecode {
@@ -312,7 +312,7 @@
   width: 36px;
   height: 36px;
   padding: 0;
-  background: rgba(255, 255, 255, 0.04);
+  background: rgb(255 255 255 / 4%);
   border: 1px solid var(--border-default);
   border-radius: var(--radius-md);
   color: var(--text-secondary);
@@ -322,10 +322,10 @@
 }
 
 .transport-btn:hover {
-  background: rgba(255, 255, 255, 0.08);
+  background: rgb(255 255 255 / 8%);
   color: var(--text-primary);
   border-color: var(--border-strong);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+  box-shadow: 0 2px 8px rgb(0 0 0 / 20%);
 }
 
 .transport-btn:active {
@@ -339,25 +339,25 @@
   border-color: var(--accent-primary);
   color: var(--accent-primary);
   font-size: 1.1rem;
-  background: rgba(224, 112, 32, 0.08);
-  box-shadow: 0 0 0 0 rgba(224, 112, 32, 0);
+  background: rgb(224 112 32 / 8%);
+  box-shadow: 0 0 0 0 rgb(224 112 32 / 0%);
 }
 
 .play-btn:hover {
   color: var(--accent-primary-hover);
-  background: rgba(224, 112, 32, 0.15);
-  box-shadow: 0 0 20px rgba(224, 112, 32, 0.2);
+  background: rgb(224 112 32 / 15%);
+  box-shadow: 0 0 20px rgb(224 112 32 / 20%);
 }
 
 .play-btn.playing {
   background: var(--accent-primary-muted);
-  box-shadow: 0 0 20px rgba(224, 112, 32, 0.3);
+  box-shadow: 0 0 20px rgb(224 112 32 / 30%);
   animation: pulse-glow 2s ease-in-out infinite;
 }
 
 @keyframes pulse-glow {
-  0%, 100% { box-shadow: 0 0 12px rgba(224, 112, 32, 0.2); }
-  50% { box-shadow: 0 0 24px rgba(224, 112, 32, 0.4); }
+  0%, 100% { box-shadow: 0 0 12px rgb(224 112 32 / 20%); }
+  50% { box-shadow: 0 0 24px rgb(224 112 32 / 40%); }
 }
 
 .volume-control {
@@ -376,7 +376,6 @@
 .volume-slider {
   width: 80px;
   height: 4px;
-  -webkit-appearance: none;
   appearance: none;
   background: var(--bg-tertiary);
   border-radius: var(--radius-full);
@@ -384,7 +383,7 @@
 }
 
 .volume-slider::-webkit-slider-thumb {
-  -webkit-appearance: none;
+  appearance: none;
   width: 12px;
   height: 12px;
   background: var(--text-primary);
@@ -475,13 +474,13 @@
 }
 
 /* Responsive */
-@media (max-width: 1200px) {
+@media (width <= 1200px) {
   .edit-top {
     grid-template-columns: 220px 1fr 240px;
   }
 }
 
-@media (max-width: 900px) {
+@media (width <= 900px) {
   .edit-top {
     grid-template-columns: 1fr;
     grid-template-rows: auto 1fr auto;

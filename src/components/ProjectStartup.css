@@ -5,13 +5,13 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(0, 0, 0, 0.85);
+  background: rgb(0 0 0 / 85%);
   backdrop-filter: blur(10px);
   z-index: 1000;
-  animation: fadeIn 0.3s ease;
+  animation: fade-in 0.3s ease;
 }
 
-@keyframes fadeIn {
+@keyframes fade-in {
   from { opacity: 0; }
   to { opacity: 1; }
 }
@@ -24,14 +24,15 @@
   box-shadow: var(--shadow-xl);
   border: 1px solid var(--border-default);
   overflow: hidden;
-  animation: slideUp 0.3s ease;
+  animation: slide-up 0.3s ease;
 }
 
-@keyframes slideUp {
+@keyframes slide-up {
   from {
     opacity: 0;
     transform: translateY(20px) scale(0.98);
   }
+
   to {
     opacity: 1;
     transform: translateY(0) scale(1);
@@ -71,7 +72,7 @@
   align-items: center;
   gap: var(--spacing-lg);
   padding: var(--spacing-lg);
-  background: rgba(255, 255, 255, 0.03);
+  background: rgb(255 255 255 / 3%);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-xl);
   cursor: pointer;
@@ -81,9 +82,9 @@
 }
 
 .action-card:hover {
-  background: rgba(255, 255, 255, 0.06);
+  background: rgb(255 255 255 / 6%);
   border-color: var(--border-default);
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+  box-shadow: 0 4px 20px rgb(0 0 0 / 20%);
   transform: translateY(-2px);
 }
 
@@ -93,7 +94,7 @@
 
 .action-card.create:hover {
   border-color: var(--accent-primary);
-  box-shadow: 0 4px 24px rgba(224, 112, 32, 0.15);
+  box-shadow: 0 4px 24px rgb(224 112 32 / 15%);
 }
 
 .action-icon {
@@ -103,7 +104,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(255, 255, 255, 0.04);
+  background: rgb(255 255 255 / 4%);
   border-radius: var(--radius-lg);
   font-size: 1.1rem;
   color: var(--text-secondary);
@@ -111,13 +112,13 @@
 }
 
 .action-card.create .action-icon {
-  background: rgba(224, 112, 32, 0.1);
+  background: rgb(224 112 32 / 10%);
   color: var(--accent-primary);
 }
 
 .action-card.create:hover .action-icon {
-  background: rgba(224, 112, 32, 0.2);
-  box-shadow: 0 0 16px rgba(224, 112, 32, 0.2);
+  background: rgb(224 112 32 / 20%);
+  box-shadow: 0 0 16px rgb(224 112 32 / 20%);
 }
 
 .action-title {
@@ -278,7 +279,7 @@
 }
 
 /* Responsive */
-@media (max-width: 500px) {
+@media (width <= 500px) {
   .startup-dialog {
     width: 95%;
     max-height: 90vh;

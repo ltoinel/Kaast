@@ -10,13 +10,17 @@
     "preview": "vite preview",
     "tauri": "tauri",
     "download-ffmpeg": "bash scripts/download-ffmpeg.sh",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
+    "lint": "eslint src/",
+    "lint:css": "stylelint \"src/**/*.css\""
   },
   "dependencies": {
     "@tauri-apps/api": "^2.0.0",
     "@tauri-apps/plugin-dialog": "^2.6.0",
     "@tauri-apps/plugin-fs": "^2.4.5",
     "@tauri-apps/plugin-shell": "^2.0.0",
+    "@tauri-apps/plugin-store": "^2.4.2",
     "dompurify": "^3.3.1",
     "i18next": "^25.8.4",
     "i18next-browser-languagedetector": "^8.2.0",
@@ -26,13 +30,23 @@
     "react-i18next": "^16.5.4"
   },
   "devDependencies": {
+    "@eslint/js": "^9.0.0",
     "@tauri-apps/cli": "^2.10.0",
+    "@testing-library/react": "^16.3.2",
+    "@testing-library/user-event": "^14.6.1",
     "@types/dompurify": "^3.0.5",
     "@types/react": "^18.3.0",
     "@types/react-dom": "^18.3.0",
     "@vitejs/plugin-react": "^4.3.0",
+    "@vitest/coverage-v8": "^4.0.18",
+    "eslint": "^9.0.0",
+    "eslint-plugin-react-hooks": "^7.0.1",
+    "eslint-plugin-react-refresh": "^0.5.2",
     "happy-dom": "^20.7.0",
+    "stylelint": "^17.4.0",
+    "stylelint-config-standard": "^40.0.0",
     "typescript": "^5.5.0",
+    "typescript-eslint": "^8.56.1",
     "vite": "^5.3.0",
     "vitest": "^4.0.18"
   }

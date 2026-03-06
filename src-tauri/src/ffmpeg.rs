@@ -7,13 +7,15 @@ use std::process::{Command, Stdio};
 
 use serde::Deserialize;
 use tauri::Emitter;
+use tracing::info;
 
+use crate::error::{AppError, CmdResult};
 use crate::sidecar::sidecar_path;
 
 /// Check whether FFmpeg is available (bundled sidecar or system PATH).
 /// Returns the FFmpeg version string with the source indicator.
 #[tauri::command]
-pub fn check_ffmpeg() -> Result<String, String> {
+pub fn check_ffmpeg() -> CmdResult<String> {
     let ffmpeg = sidecar_path("ffmpeg");
     let is_bundled = ffmpeg.is_absolute() && ffmpeg.exists();
     let output = Command::new(&ffmpeg)
@@ -28,17 +30,17 @@ pub fn check_ffmpeg() -> Result<String, String> {
                 let source = if is_bundled { " (bundled)" } else { " (system)" };
                 Ok(format!("{}{}", first_line, source))
             } else {
-                Err("FFmpeg found but execution failed".to_string())
+                Err(AppError::Ffmpeg("FFmpeg found but execution failed".into()))
             }
         }
-        Err(_) => Err("FFmpeg not available. Run 'bash scripts/download-ffmpeg.sh' then restart the application.".to_string())
+        Err(_) => Err(AppError::Ffmpeg("FFmpeg not available. Run 'bash scripts/download-ffmpeg.sh' then restart the application.".into()))
     }
 }
 
 /// Cut a segment from a video file between `start` and `end` seconds.
 #[tauri::command]
-pub fn cut_video(input_path: String, start: f64, end: f64, output_path: String) -> Result<String, String> {
-    println!("Cutting video: {} from {} to {} -> {}", input_path, start, end, output_path);
+pub fn cut_video(input_path: String, start: f64, end: f64, output_path: String) -> CmdResult<String> {
+    info!(input = %input_path, start, end, output = %output_path, "Cutting video");
 
     let duration = end - start;
 
@@ -49,27 +51,26 @@ pub fn cut_video(input_path: String, start: f64, end: f64, output_path: String) 
         .arg("-c:v").arg("libx264")
         .arg("-c:a").arg("aac")
         .arg("-y").arg(&output_path)
-        .output()
-        .map_err(|e| format!("FFmpeg execution error: {}", e))?;
+        .output()?;
 
     if output.status.success() {
         Ok(format!("Video cut successfully: {}", output_path))
     } else {
         let error = String::from_utf8_lossy(&output.stderr);
-        Err(format!("FFmpeg error: {}", error))
+        Err(AppError::Ffmpeg(error.to_string()))
     }
 }
 
 /// Merge multiple video files using FFmpeg concat demuxer.
 #[tauri::command]
-pub fn merge_videos(input_paths: Vec<String>, output_path: String) -> Result<String, String> {
-    println!("Merging {} videos -> {}", input_paths.len(), output_path);
+pub fn merge_videos(input_paths: Vec<String>, output_path: String) -> CmdResult<String> {
+    info!(count = input_paths.len(), output = %output_path, "Merging videos");
 
     if input_paths.is_empty() {
-        return Err("No videos to merge".to_string());
+        return Err(AppError::Validation("No videos to merge".into()));
     }
     if input_paths.len() == 1 {
-        return Err("At least 2 videos are required for merging".to_string());
+        return Err(AppError::Validation("At least 2 videos are required for merging".into()));
     }
 
     let list_path = Path::new(&output_path)
@@ -82,8 +83,7 @@ pub fn merge_videos(input_paths: Vec<String>, output_path: String) -> Result<Str
         list_content.push_str(&format!("file '{}'\n", path.replace('\\', "/")));
     }
 
-    std::fs::write(&list_path, list_content)
-        .map_err(|e| format!("Error creating list file: {}", e))?;
+    std::fs::write(&list_path, list_content)?;
 
     let output = Command::new(sidecar_path("ffmpeg"))
         .arg("-f").arg("concat")
@@ -91,8 +91,7 @@ pub fn merge_videos(input_paths: Vec<String>, output_path: String) -> Result<Str
         .arg("-i").arg(&list_path)
         .arg("-c").arg("copy")
         .arg("-y").arg(&output_path)
-        .output()
-        .map_err(|e| format!("FFmpeg execution error: {}", e))?;
+        .output()?;
 
     let _ = std::fs::remove_file(&list_path);
 
@@ -100,14 +99,14 @@ pub fn merge_videos(input_paths: Vec<String>, output_path: String) -> Result<Str
         Ok(format!("Videos merged successfully: {}", output_path))
     } else {
         let error = String::from_utf8_lossy(&output.stderr);
-        Err(format!("FFmpeg error: {}", error))
+        Err(AppError::Ffmpeg(error.to_string()))
     }
 }
 
 /// Add a video transition (fade, dissolve, wipeleft) between two clips.
 #[tauri::command]
-pub fn add_transition(video1: String, video2: String, transition_type: String, duration: f64, output_path: String) -> Result<String, String> {
-    println!("Adding {} transition ({}s) between {} and {}", transition_type, duration, video1, video2);
+pub fn add_transition(video1: String, video2: String, transition_type: String, duration: f64, output_path: String) -> CmdResult<String> {
+    info!(transition = %transition_type, duration, "Adding transition");
 
     let filter = match transition_type.as_str() {
         "fade" => format!("[0:v][0:a][1:v][1:a]xfade=transition=fade:duration={}:offset=0[v][a]", duration),
@@ -125,35 +124,33 @@ pub fn add_transition(video1: String, video2: String, transition_type: String, d
         .arg("-c:v").arg("libx264")
         .arg("-c:a").arg("aac")
         .arg("-y").arg(&output_path)
-        .output()
-        .map_err(|e| format!("FFmpeg execution error: {}", e))?;
+        .output()?;
 
     if output.status.success() {
         Ok(format!("Transition added successfully: {}", output_path))
     } else {
         let error = String::from_utf8_lossy(&output.stderr);
-        Err(format!("FFmpeg error: {}", error))
+        Err(AppError::Ffmpeg(error.to_string()))
     }
 }
 
 /// Get detailed media information (streams, format) for a video file via FFprobe.
 #[tauri::command]
-pub fn get_video_info(video_path: String) -> Result<String, String> {
+pub fn get_video_info(video_path: String) -> CmdResult<String> {
     let output = Command::new(sidecar_path("ffprobe"))
         .arg("-v").arg("quiet")
         .arg("-print_format").arg("json")
         .arg("-show_format")
         .arg("-show_streams")
         .arg(&video_path)
-        .output()
-        .map_err(|e| format!("FFprobe execution error: {}", e))?;
+        .output()?;
 
     if output.status.success() {
         let info = String::from_utf8_lossy(&output.stdout);
         Ok(info.to_string())
     } else {
         let error = String::from_utf8_lossy(&output.stderr);
-        Err(format!("FFprobe error: {}", error))
+        Err(AppError::Ffmpeg(error.to_string()))
     }
 }
 
@@ -178,18 +175,17 @@ pub async fn export_project(
     quality: String,
     total_duration: f64,
     format: Option<String>,
-) -> Result<String, String> {
+) -> CmdResult<String> {
     let format = format.unwrap_or_else(|| "h264".to_string());
-    println!("Export to {} with quality {} format {}", output_path, quality, format);
+    info!(output = %output_path, %quality, %format, "Exporting project");
 
     if video_clips.is_empty() && audio_path.is_none() {
-        return Err("No clips to export".to_string());
+        return Err(AppError::Validation("No clips to export".into()));
     }
 
     // Create output directory if needed
     if let Some(parent) = Path::new(&output_path).parent() {
-        std::fs::create_dir_all(parent)
-            .map_err(|e| format!("Error creating output directory: {}", e))?;
+        std::fs::create_dir_all(parent)?;
     }
 
     // Run the blocking FFmpeg process in a separate thread
@@ -219,12 +215,11 @@ pub async fn export_project(
         cmd.arg("-progress").arg("pipe:1");
         cmd.arg("-y").arg(&output_path);
 
-        println!("FFmpeg command: {:?}", cmd);
+        info!(?cmd, "FFmpeg export command");
 
         run_ffmpeg_with_progress(cmd, &app_handle, total_duration, &output_path)
     })
-    .await
-    .map_err(|e| format!("Export task error: {}", e))?
+    .await?
 }
 
 /// Build the FFmpeg complex filter for video export (trim, scale, concat, audio).
@@ -331,17 +326,16 @@ fn run_ffmpeg_with_progress(
     app_handle: &tauri::AppHandle,
     total_duration: f64,
     output_path: &str,
-) -> Result<String, String> {
+) -> CmdResult<String> {
     let mut child = cmd
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
-        .spawn()
-        .map_err(|e| format!("FFmpeg execution error: {}", e))?;
+        .spawn()?;
 
     let stdout = child.stdout.take()
-        .ok_or_else(|| "Failed to capture FFmpeg stdout".to_string())?;
+        .ok_or_else(|| AppError::Ffmpeg("Failed to capture FFmpeg stdout".into()))?;
     let stderr_pipe = child.stderr.take()
-        .ok_or_else(|| "Failed to capture FFmpeg stderr".to_string())?;
+        .ok_or_else(|| AppError::Ffmpeg("Failed to capture FFmpeg stderr".into()))?;
 
     // Collect stderr in a background thread (for error reporting)
     let stderr_thread = std::thread::spawn(move || {
@@ -370,26 +364,23 @@ fn run_ffmpeg_with_progress(
         }
     }
 
-    let status = child.wait()
-        .map_err(|e| format!("FFmpeg wait error: {}", e))?;
-
+    let status = child.wait()?;
     let stderr_output = stderr_thread.join().unwrap_or_default();
 
     if status.success() {
         let _ = app_handle.emit("export-progress", 100.0_f64);
         Ok(format!("Project exported: {}", output_path))
     } else {
-        Err(format!("FFmpeg error: {}", stderr_output))
+        Err(AppError::Ffmpeg(stderr_output))
     }
 }
 
 /// Extract a thumbnail frame from a video file using FFmpeg.
 /// Saves the thumbnail as a JPEG at the given path.
 #[tauri::command]
-pub fn generate_video_thumbnail(video_path: String, thumbnail_path: String) -> Result<String, String> {
+pub fn generate_video_thumbnail(video_path: String, thumbnail_path: String) -> CmdResult<String> {
     if let Some(parent) = Path::new(&thumbnail_path).parent() {
-        std::fs::create_dir_all(parent)
-            .map_err(|e| format!("Error creating cache directory: {}", e))?;
+        std::fs::create_dir_all(parent)?;
     }
 
     let output = Command::new(sidecar_path("ffmpeg"))
@@ -399,25 +390,23 @@ pub fn generate_video_thumbnail(video_path: String, thumbnail_path: String) -> R
         .arg("-vf").arg("scale=480:-1")
         .arg("-q:v").arg("3")
         .arg("-y").arg(&thumbnail_path)
-        .output()
-        .map_err(|e| format!("FFmpeg thumbnail error: {}", e))?;
+        .output()?;
 
     if output.status.success() {
-        println!("Thumbnail generated: {}", thumbnail_path);
+        info!(path = %thumbnail_path, "Thumbnail generated");
         Ok(thumbnail_path)
     } else {
         let error = String::from_utf8_lossy(&output.stderr);
-        Err(format!("FFmpeg thumbnail error: {}", error))
+        Err(AppError::Ffmpeg(error.to_string()))
     }
 }
 
 /// Generate a low-resolution proxy video for preview playback.
 /// Transcodes to 360p H.264 with ultrafast preset for quick loading.
 #[tauri::command]
-pub fn generate_video_proxy(video_path: String, proxy_path: String) -> Result<String, String> {
+pub fn generate_video_proxy(video_path: String, proxy_path: String) -> CmdResult<String> {
     if let Some(parent) = Path::new(&proxy_path).parent() {
-        std::fs::create_dir_all(parent)
-            .map_err(|e| format!("Error creating proxy directory: {}", e))?;
+        std::fs::create_dir_all(parent)?;
     }
 
     let output = Command::new(sidecar_path("ffmpeg"))
@@ -429,14 +418,13 @@ pub fn generate_video_proxy(video_path: String, proxy_path: String) -> Result<St
         .arg("-an")
         .arg("-movflags").arg("+faststart")
         .arg("-y").arg(&proxy_path)
-        .output()
-        .map_err(|e| format!("FFmpeg proxy error: {}", e))?;
+        .output()?;
 
     if output.status.success() {
-        println!("Proxy generated: {}", proxy_path);
+        info!(path = %proxy_path, "Proxy generated");
         Ok(proxy_path)
     } else {
         let error = String::from_utf8_lossy(&output.stderr);
-        Err(format!("FFmpeg proxy error: {}", error))
+        Err(AppError::Ffmpeg(error.to_string()))
     }
 }

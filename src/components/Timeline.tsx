@@ -3,6 +3,9 @@ import { useTranslation } from "react-i18next";
 import "./Timeline.css";
 import { formatTime } from "../utils/timecode";
 import { computeTotalDuration } from "../utils/duration";
+import { IconFilm } from "./Icons";
+import { useTimelineDrag } from "../hooks/useTimelineDrag";
+import TimelineTrack from "./TimelineTrack";
 import type { AudioClip, VideoClip } from "../types";
 export type { AudioClip, VideoClip };
 
@@ -41,12 +44,8 @@ function Timeline({
   const [zoom, setZoom] = useState<number>(50);
   const [internalIsPlaying] = useState<boolean>(false);
   const [internalCurrentTime, setInternalCurrentTime] = useState<number>(0);
-  const [dragOverTrack, setDragOverTrack] = useState<"audio" | "video" | null>(null);
-  const [dragSnapX, setDragSnapX] = useState<number | null>(null);
   const [isScrubbing, setIsScrubbing] = useState(false);
   const [scrubTime, setScrubTime] = useState(0);
-  const dragOffsetRef = useRef<number>(0);
-  const timelineRef = useRef<HTMLDivElement>(null);
   const rulerRef = useRef<HTMLDivElement>(null);
 
   const isPlaying = externalIsPlaying !== undefined ? externalIsPlaying : internalIsPlaying;
@@ -57,11 +56,16 @@ function Timeline({
     60,
   );
 
-  /** Snap a time value to the nearest grid step (1 second per zoom pixel) */
+  /** Snap a time value to the nearest grid step */
   const snapToGrid = useCallback((time: number): number => {
     const step = Math.max(1, Math.round(zoom / 10));
     return Math.round(time / step) * step;
   }, [zoom]);
+
+  const {
+    dragOverTrack, dragSnapX,
+    handleDragStart, handleDragOver, handleDragLeave, handleDrop,
+  } = useTimelineDrag({ zoom, snapToGrid, onMoveClip });
 
   const timeMarkers = useMemo(() => {
     const markers: number[] = [];
@@ -84,18 +88,14 @@ function Timeline({
     return heights;
   }, [audioClips]);
 
-  const handleClipClick = (clipId: string, type: "audio" | "video") => {
+  const handleClipClick = useCallback((clipId: string, type: "audio" | "video") => {
     setInternalSelectedClip(clipId);
-    if (onClipSelect) {
-      onClipSelect(clipId, type);
-    }
-  };
+    if (onClipSelect) onClipSelect(clipId, type);
+  }, [onClipSelect]);
 
-  const handleClipDoubleClick = (clip: AudioClip | VideoClip) => {
-    if (onPlayClip) {
-      onPlayClip(clip);
-    }
-  };
+  const handleClipDoubleClick = useCallback((clip: AudioClip | VideoClip) => {
+    if (onPlayClip) onPlayClip(clip);
+  }, [onPlayClip]);
 
   /** Compute time from a mouse X position relative to the ruler */
   const timeFromRulerX = useCallback((clientX: number): number => {
@@ -105,12 +105,11 @@ function Timeline({
     return Math.max(0, Math.min(effectiveDuration, x / zoom));
   }, [zoom, effectiveDuration]);
 
-  /** Start scrubbing on mousedown — playhead follows mouse */
+  /** Start scrubbing on mousedown */
   const handleRulerMouseDown = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
     e.preventDefault();
-    const time = timeFromRulerX(e.clientX);
     setIsScrubbing(true);
-    setScrubTime(time);
+    setScrubTime(timeFromRulerX(e.clientX));
   }, [timeFromRulerX]);
 
   /** Track mouse during scrubbing, commit seek on mouseup */
@@ -139,63 +138,10 @@ function Timeline({
     };
   }, [isScrubbing, timeFromRulerX, onSeek]);
 
-
-  // Drag & Drop handlers
-  const handleDragStart = useCallback((e: React.DragEvent, clipId: string, type: "audio" | "video") => {
-    e.dataTransfer.setData("application/clip-id", clipId);
-    e.dataTransfer.setData("application/clip-type", type);
-    e.dataTransfer.effectAllowed = "move";
-    // Store offset between cursor and clip left edge
-    const clipRect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-    dragOffsetRef.current = e.clientX - clipRect.left;
-  }, []);
-
-  const handleDragOver = useCallback((e: React.DragEvent, trackType: "audio" | "video") => {
-    e.preventDefault();
-    e.dataTransfer.dropEffect = "move";
-    setDragOverTrack(trackType);
-
-    // Compute snapped position accounting for grab offset
-    const rect = e.currentTarget.getBoundingClientRect();
-    const x = e.clientX - rect.left - dragOffsetRef.current;
-    const rawTime = Math.max(0, x / zoom);
-    const snappedTime = snapToGrid(rawTime);
-    setDragSnapX(snappedTime * zoom);
-  }, [zoom, snapToGrid]);
-
-  const handleDragLeave = useCallback((e: React.DragEvent) => {
-    const relatedTarget = e.relatedTarget as HTMLElement | null;
-    if (!e.currentTarget.contains(relatedTarget)) {
-      setDragOverTrack(null);
-      setDragSnapX(null);
-    }
-  }, []);
-
-  const handleDrop = useCallback((e: React.DragEvent, trackType: "audio" | "video") => {
-    e.preventDefault();
-    setDragOverTrack(null);
-    setDragSnapX(null);
-
-    const clipId = e.dataTransfer.getData("application/clip-id");
-    const clipType = e.dataTransfer.getData("application/clip-type") as "audio" | "video";
-
-    if (!clipId || !clipType || clipType !== trackType) return;
-    if (!onMoveClip) return;
-
-    // Calculate new startTime accounting for grab offset, snapped to grid
-    const rect = e.currentTarget.getBoundingClientRect();
-    const x = e.clientX - rect.left - dragOffsetRef.current;
-    const rawTime = Math.max(0, x / zoom);
-    const snappedTime = snapToGrid(rawTime);
-
-    onMoveClip(clipId, clipType, snappedTime);
-  }, [zoom, onMoveClip]);
-
-
   return (
     <div className="timeline">
       <div className="timeline-header">
-        <h3>{"\uD83C\uDFAC"} {t('timeline.title')}</h3>
+        <h3><IconFilm /> {t('timeline.title')}</h3>
         <div className="timeline-controls">
           <button
             className="timeline-btn"
@@ -215,7 +161,7 @@ function Timeline({
         </div>
       </div>
 
-      <div className="timeline-body" ref={timelineRef}>
+      <div className="timeline-body">
         <div
           ref={rulerRef}
           className="timeline-ruler"
@@ -223,11 +169,7 @@ function Timeline({
           onMouseDown={handleRulerMouseDown}
         >
           {timeMarkers.map(marker => (
-            <div
-              key={marker}
-              className="time-marker"
-              style={{ left: marker * zoom }}
-            >
+            <div key={marker} className="time-marker" style={{ left: marker * zoom }}>
               <span>{formatTime(marker)}</span>
             </div>
           ))}
@@ -237,99 +179,40 @@ function Timeline({
           />
         </div>
 
-        <div className="timeline-track video-track">
-          <div className="track-label">{"\uD83C\uDFA5"} {t('timeline.videoTrack')}</div>
-          <div
-            className={`track-content ${dragOverTrack === "video" ? "drag-over" : ""}`}
-            style={{ width: effectiveDuration * zoom }}
-            onDragOver={(e) => handleDragOver(e, "video")}
-            onDragLeave={handleDragLeave}
-            onDrop={(e) => handleDrop(e, "video")}
-          >
-            {videoClips.length === 0 ? (
-              <div className="track-empty">
-                <span>{t('timeline.dropVideos')}</span>
-              </div>
-            ) : (
-              videoClips.map(clip => (
-                <div
-                  key={clip.id}
-                  className={`timeline-clip video-clip ${selectedClip === clip.id ? "selected" : ""}`}
-                  style={{
-                    left: clip.startTime * zoom,
-                    width: clip.duration * zoom,
-                  }}
-                  draggable
-                  onDragStart={(e) => handleDragStart(e, clip.id, "video")}
-                  onClick={() => handleClipClick(clip.id, "video")}
-                  onDoubleClick={() => handleClipDoubleClick(clip)}
-                >
-                  {clip.thumbnail && resolvedUrls[clip.thumbnail] && (
-                    <img
-                      className="clip-thumbnail-video"
-                      src={resolvedUrls[clip.thumbnail]}
-                      alt={clip.name}
-                      loading="lazy"
-                    />
-                  )}
-                  <span className="clip-name">{clip.name}</span>
-                  <span className="clip-duration">{formatTime(clip.duration)}</span>
-                </div>
-              ))
-            )}
-            {dragOverTrack === "video" && dragSnapX !== null && (
-              <div className="drop-snap-indicator" style={{ left: dragSnapX }} />
-            )}
-          </div>
-        </div>
+        <TimelineTrack
+          type="video"
+          clips={videoClips}
+          zoom={zoom}
+          effectiveDuration={effectiveDuration}
+          selectedClip={selectedClip}
+          resolvedUrls={resolvedUrls}
+          dragOverTrack={dragOverTrack}
+          dragSnapX={dragSnapX}
+          onDragStart={handleDragStart}
+          onDragOver={handleDragOver}
+          onDragLeave={handleDragLeave}
+          onDrop={handleDrop}
+          onClipClick={handleClipClick}
+          onClipDoubleClick={handleClipDoubleClick}
+        />
 
-        <div className="timeline-track audio-track">
-          <div className="track-label">{"\uD83C\uDF99\uFE0F"} {t('timeline.audioTrack')}</div>
-          <div
-            className={`track-content ${dragOverTrack === "audio" ? "drag-over" : ""}`}
-            style={{ width: effectiveDuration * zoom }}
-            onDragOver={(e) => handleDragOver(e, "audio")}
-            onDragLeave={handleDragLeave}
-            onDrop={(e) => handleDrop(e, "audio")}
-          >
-            {audioClips.length === 0 ? (
-              <div className="track-empty">
-                <span>{t('timeline.audioClipsAppear')}</span>
-              </div>
-            ) : (
-              audioClips.map(clip => (
-                <div
-                  key={clip.id}
-                  className={`timeline-clip audio-clip ${selectedClip === clip.id ? "selected" : ""}`}
-                  style={{
-                    left: clip.startTime * zoom,
-                    width: Math.max(clip.duration * zoom, 100),
-                  }}
-                  draggable
-                  onDragStart={(e) => handleDragStart(e, clip.id, "audio")}
-                  onClick={() => handleClipClick(clip.id, "audio")}
-                  onDoubleClick={() => handleClipDoubleClick(clip)}
-                  title={t('timeline.doubleClickToPlay', { name: clip.name })}
-                >
-                  <div className="clip-waveform">
-                    {(waveformHeights[clip.id] || []).map((height, i) => (
-                      <div
-                        key={i}
-                        className="waveform-bar"
-                        style={{ height: `${height}%` }}
-                      />
-                    ))}
-                  </div>
-                  <span className="clip-name">{clip.name}</span>
-                  <span className="clip-duration">{formatTime(clip.duration)}</span>
-                </div>
-              ))
-            )}
-            {dragOverTrack === "audio" && dragSnapX !== null && (
-              <div className="drop-snap-indicator" style={{ left: dragSnapX }} />
-            )}
-          </div>
-        </div>
+        <TimelineTrack
+          type="audio"
+          clips={audioClips}
+          zoom={zoom}
+          effectiveDuration={effectiveDuration}
+          selectedClip={selectedClip}
+          resolvedUrls={resolvedUrls}
+          waveformHeights={waveformHeights}
+          dragOverTrack={dragOverTrack}
+          dragSnapX={dragSnapX}
+          onDragStart={handleDragStart}
+          onDragOver={handleDragOver}
+          onDragLeave={handleDragLeave}
+          onDrop={handleDrop}
+          onClipClick={handleClipClick}
+          onClipDoubleClick={handleClipDoubleClick}
+        />
       </div>
 
       {isPlaying && (

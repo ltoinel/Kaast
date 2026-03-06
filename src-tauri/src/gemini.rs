@@ -3,6 +3,9 @@
 
 use base64::{Engine as _, engine::general_purpose};
 use serde::{Deserialize, Serialize};
+use tracing::info;
+
+use crate::error::{AppError, CmdResult};
 
 // ---------------------------------------------------------------------------
 // Gemini text generation structures
@@ -143,17 +146,16 @@ struct AudioInlineData {
 /// Generate text-to-speech audio using Gemini 2.0 Flash TTS.
 /// Returns the path to the generated WAV file.
 #[tauri::command]
-pub async fn generate_voice(text: String, api_key: String, output_path: String, language: String, voice_style_prompt: String) -> Result<String, String> {
-    println!("Gemini Flash voice generation for {} characters", text.len());
+pub async fn generate_voice(text: String, api_key: String, output_path: String, language: String, voice_style_prompt: String) -> CmdResult<String> {
+    info!(chars = text.len(), "Gemini Flash voice generation");
 
     if text.trim().is_empty() {
-        return Err("Text cannot be empty".to_string());
+        return Err(AppError::Validation("Text cannot be empty".into()));
     }
 
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(300))
-        .build()
-        .map_err(|e| format!("Client creation error: {}", e))?;
+        .build()?;
 
     let prompt = format!(
         "{}\n\nText to read in {}:\n\n{}",
@@ -181,58 +183,51 @@ pub async fn generate_voice(text: String, api_key: String, output_path: String, 
         api_key
     );
 
-    println!("Calling Gemini TTS API for audio generation...");
+    info!("Calling Gemini TTS API for audio generation");
 
     let response = client
         .post(&api_url)
         .header("Content-Type", "application/json")
         .json(&request_body)
         .send()
-        .await
-        .map_err(|e| format!("Gemini API call error: {}", e))?;
+        .await?;
 
     if !response.status().is_success() {
-        let status = response.status();
-        let error_text = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
-        return Err(format!("Gemini API error ({}): {}", status, error_text));
+        let status = response.status().as_u16();
+        let body = response.text().await.unwrap_or_else(|_| "Unknown error".into());
+        return Err(AppError::Api { status, body });
     }
 
-    let gemini_response: GeminiAudioResponse = response
-        .json()
-        .await
-        .map_err(|e| format!("Gemini response parsing error: {}", e))?;
+    let gemini_response: GeminiAudioResponse = response.json().await?;
 
     if let Some(error) = gemini_response.error {
-        return Err(format!("Gemini error: {}", error.message));
+        return Err(AppError::Api { status: 0, body: error.message });
     }
 
     let candidates = gemini_response.candidates
-        .ok_or("No candidates in Gemini response")?;
+        .ok_or_else(|| AppError::Other("No candidates in Gemini response".into()))?;
 
     if candidates.is_empty() {
-        return Err("Empty Gemini response".to_string());
+        return Err(AppError::Other("Empty Gemini response".into()));
     }
 
     let mut all_audio_data: Vec<u8> = Vec::new();
 
     for part in &candidates[0].content.parts {
         if let Some(ref inline_data) = part.inline_data {
-            println!("Audio found, mime_type: {}", inline_data.mime_type);
-            let audio_data = general_purpose::STANDARD
-                .decode(&inline_data.data)
-                .map_err(|e| format!("Base64 audio decoding error: {}", e))?;
+            info!(mime_type = %inline_data.mime_type, "Audio data found");
+            let audio_data = general_purpose::STANDARD.decode(&inline_data.data)?;
             all_audio_data.extend(audio_data);
         }
     }
 
     if all_audio_data.is_empty() {
-        return Err("No audio data in Gemini response".to_string());
+        return Err(AppError::Other("No audio data in Gemini response".into()));
     }
 
     // Create parent directory if needed
     if let Some(parent) = std::path::Path::new(&output_path).parent() {
-        std::fs::create_dir_all(parent)
-            .map_err(|e| format!("Error creating directory: {}", e))?;
+        std::fs::create_dir_all(parent)?;
     }
 
     // Parse sample rate from mime_type (e.g. "audio/L16;rate=24000")
@@ -253,10 +248,9 @@ pub async fn generate_voice(text: String, api_key: String, output_path: String, 
         output_path.clone()
     };
 
-    std::fs::write(&final_output_path, &wav_data)
-        .map_err(|e| format!("Error writing file: {}", e))?;
+    std::fs::write(&final_output_path, &wav_data)?;
 
-    println!("Audio generated: {} ({} bytes, {}Hz)", final_output_path, wav_data.len(), sample_rate);
+    info!(path = %final_output_path, bytes = wav_data.len(), sample_rate, "Audio generated");
     Ok(final_output_path)
 }
 
@@ -294,22 +288,19 @@ pub(crate) fn build_wav_data(audio_data: &[u8], sample_rate: u32) -> Vec<u8> {
 /// Fetches the page content, extracts text, and sends it to Gemini
 /// with the provided style prompt.
 #[tauri::command]
-pub async fn generate_podcast_script(url: String, api_key: String, style_prompt: String, language: String) -> Result<String, String> {
-    println!("Generating podcast script from: {}", url);
+pub async fn generate_podcast_script(url: String, api_key: String, style_prompt: String, language: String) -> CmdResult<String> {
+    info!(url = %url, "Generating podcast script");
 
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(30))
-        .build()
-        .map_err(|e| format!("Client creation error: {}", e))?;
+        .build()?;
 
     let html = client
         .get(&url)
         .send()
-        .await
-        .map_err(|e| format!("Download error: {}", e))?
+        .await?
         .text()
-        .await
-        .map_err(|e| format!("Content reading error: {}", e))?;
+        .await?;
 
     // Extract main text with scraper in a blocking thread
     let content = tokio::task::spawn_blocking(move || {
@@ -324,7 +315,7 @@ pub async fn generate_podcast_script(url: String, api_key: String, style_prompt:
             }
         }
         if content.trim().is_empty() {
-            return Err("Unable to extract site content".to_string());
+            return Err(AppError::Validation("Unable to extract site content".into()));
         }
         // Limit to 5000 characters to avoid token overflow
         let content = if content.len() > 5000 {
@@ -334,8 +325,7 @@ pub async fn generate_podcast_script(url: String, api_key: String, style_prompt:
         };
         Ok(content)
     })
-    .await
-    .map_err(|e| format!("Extraction thread error: {}", e))??;
+    .await??;
 
     let prompt = format!("{}\n\nWrite the podcast script in {}.\n\nSource content:\n{}\n\nPodcast script:", style_prompt, language, content);
 
@@ -358,26 +348,22 @@ pub async fn generate_podcast_script(url: String, api_key: String, style_prompt:
         .header("Content-Type", "application/json")
         .json(&request_body)
         .send()
-        .await
-        .map_err(|e| format!("Gemini API call error: {}", e))?;
+        .await?;
 
     if !response.status().is_success() {
-        let status = response.status();
-        let error_text = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
-        return Err(format!("API error ({}): {}", status, error_text));
+        let status = response.status().as_u16();
+        let body = response.text().await.unwrap_or_else(|_| "Unknown error".into());
+        return Err(AppError::Api { status, body });
     }
 
-    let gemini_response: GeminiResponse = response
-        .json()
-        .await
-        .map_err(|e| format!("Response parsing error: {}", e))?;
+    let gemini_response: GeminiResponse = response.json().await?;
 
     let script = gemini_response
         .candidates
         .first()
         .and_then(|c| c.content.parts.first())
         .and_then(|p| p.text.clone())
-        .ok_or_else(|| "No script generated".to_string())?;
+        .ok_or_else(|| AppError::Other("No script generated".into()))?;
 
     Ok(script)
 }
@@ -385,13 +371,12 @@ pub async fn generate_podcast_script(url: String, api_key: String, style_prompt:
 /// Generate video scene suggestions from a podcast script using Gemini API.
 /// Returns a JSON array of scenes with descriptions, durations, and search keywords.
 #[tauri::command]
-pub async fn generate_video_scenes(script: String, api_key: String, total_duration: f64, max_scene_duration: u32, language: String, scene_style_prompt: String) -> Result<String, String> {
-    println!("Generating video scenes from script (total duration: {}s, max per scene: {}s)...", total_duration, max_scene_duration);
+pub async fn generate_video_scenes(script: String, api_key: String, total_duration: f64, max_scene_duration: u32, language: String, scene_style_prompt: String) -> CmdResult<String> {
+    info!(total_duration, max_scene_duration, "Generating video scenes from script");
 
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(60))
-        .build()
-        .map_err(|e| format!("Client creation error: {}", e))?;
+        .build()?;
 
     let prompt = format!(
         "{scene_style}\n\n\
@@ -433,26 +418,22 @@ pub async fn generate_video_scenes(script: String, api_key: String, total_durati
         .header("Content-Type", "application/json")
         .json(&request_body)
         .send()
-        .await
-        .map_err(|e| format!("Gemini API call error: {}", e))?;
+        .await?;
 
     if !response.status().is_success() {
-        let status = response.status();
-        let error_text = response.text().await.unwrap_or_else(|_| "Unknown error".to_string());
-        return Err(format!("API error ({}): {}", status, error_text));
+        let status = response.status().as_u16();
+        let body = response.text().await.unwrap_or_else(|_| "Unknown error".into());
+        return Err(AppError::Api { status, body });
     }
 
-    let gemini_response: GeminiResponse = response
-        .json()
-        .await
-        .map_err(|e| format!("Response parsing error: {}", e))?;
+    let gemini_response: GeminiResponse = response.json().await?;
 
     let raw_text = gemini_response
         .candidates
         .first()
         .and_then(|c| c.content.parts.first())
         .and_then(|p| p.text.clone())
-        .ok_or_else(|| "No scenes generated".to_string())?;
+        .ok_or_else(|| AppError::Other("No scenes generated".into()))?;
 
     // Extract JSON from text (may be wrapped in ```json ... ```)
     let json_text = if let Some(start) = raw_text.find('[') {
@@ -466,8 +447,7 @@ pub async fn generate_video_scenes(script: String, api_key: String, total_durati
     };
 
     // Validate JSON
-    let _: serde_json::Value = serde_json::from_str(json_text)
-        .map_err(|e| format!("Invalid JSON response: {}", e))?;
+    let _: serde_json::Value = serde_json::from_str(json_text)?;
 
     Ok(json_text.to_string())
 }

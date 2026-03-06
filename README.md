@@ -1,5 +1,12 @@
 # Kaast
 
+[![CI/CD](https://github.com/ltoinel/Kaast/actions/workflows/ci.yml/badge.svg)](https://github.com/ltoinel/Kaast/actions/workflows/ci.yml)
+[![Coverage](https://img.shields.io/badge/coverage-v8-blue)](https://github.com/ltoinel/Kaast)
+[![TypeScript](https://img.shields.io/badge/TypeScript-5.5-3178c6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
+[![ESLint](https://img.shields.io/badge/ESLint-9-4B32C3?logo=eslint&logoColor=white)](https://eslint.org/)
+[![Stylelint](https://img.shields.io/badge/Stylelint-17-263238?logo=stylelint&logoColor=white)](https://stylelint.io/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
 > **Status: Alpha** — Kaast is under active development. Features may change, and bugs are expected.
 
 Kaast is a desktop application that turns any web article into a ready-to-publish video podcast. Paste a URL, and Kaast handles the rest: AI generates the script, synthesizes the voice, selects matching stock footage, and assembles everything into an MP4. It runs natively on Windows, macOS, and Linux.

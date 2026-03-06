@@ -16,6 +16,7 @@ use axum::Router;
 use serde::Deserialize;
 use tokio::io::{AsyncReadExt, AsyncSeekExt};
 use tokio_util::io::ReaderStream;
+use tracing::info;
 
 /// Chunk size for streaming video data (64 KB).
 const VIDEO_CHUNK_SIZE: usize = 65536;
@@ -49,7 +50,7 @@ pub fn start_streaming_server() -> u16 {
     let port = std_listener.local_addr().unwrap().port();
     std_listener.set_nonblocking(true).unwrap();
 
-    println!("Streaming server listening on http://127.0.0.1:{}", port);
+    info!(port, "Streaming server listening");
 
     std::thread::spawn(move || {
         let rt = tokio::runtime::Builder::new_current_thread()

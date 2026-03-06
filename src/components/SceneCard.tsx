@@ -72,11 +72,12 @@ function SceneCard({
             src={thumbnailUrl}
             alt={scene.description}
           />
-          <div className="scene-video-play-btn">&#9654;</div>
+          <div className="scene-video-play-btn" aria-hidden="true">&#9654;</div>
           <div className="scene-video-overlay">
             <button
               className="scene-video-action"
               title={t("scenes.deleteVideo")}
+              aria-label={t("scenes.deleteVideo")}
               onClick={(e) => onDeleteVideo(e, scene.id)}
             >
               ✕
@@ -84,6 +85,7 @@ function SceneCard({
             <button
               className="scene-video-action"
               title={t("scenes.editDescription")}
+              aria-label={t("scenes.editDescription")}
               onClick={(e) => onStartEdit(e, scene)}
             >
               ✎

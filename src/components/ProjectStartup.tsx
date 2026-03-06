@@ -9,6 +9,7 @@ import {
 } from "../utils/project";
 import { basename } from "../utils/tauri";
 import { useAsyncAction } from "../hooks/useAsyncAction";
+import { IconMicrophone, IconPlus, IconFolder } from "./Icons";
 import "./ProjectStartup.css";
 
 declare global {
@@ -96,7 +97,7 @@ function ProjectStartup({ onProjectReady }: ProjectStartupProps) {
     return (
       <div className="project-startup">
         <div className="startup-dialog">
-          <h1>🎙️ {t('startup.newProject')}</h1>
+          <h1><IconMicrophone /> {t('startup.newProject')}</h1>
 
           <div className="create-form">
             <label htmlFor="project-name">{t('startup.projectNameLabel')}</label>
@@ -136,7 +137,7 @@ function ProjectStartup({ onProjectReady }: ProjectStartupProps) {
     <div className="project-startup">
       <div className="startup-dialog">
         <div className="startup-header">
-          <h1>🎙️ {t('startup.title')}</h1>
+          <h1><IconMicrophone /> {t('startup.title')}</h1>
           <p>{t('startup.subtitle')}</p>
         </div>
 
@@ -145,7 +146,7 @@ function ProjectStartup({ onProjectReady }: ProjectStartupProps) {
             onClick={() => setView("create")}
             className="action-card create"
           >
-            <span className="action-icon">➕</span>
+            <span className="action-icon"><IconPlus /></span>
             <span className="action-title">{t('startup.newProject')}</span>
             <span className="action-desc">{t('startup.newProjectDesc')}</span>
           </button>
@@ -154,7 +155,7 @@ function ProjectStartup({ onProjectReady }: ProjectStartupProps) {
             onClick={handleBrowseProject}
             className="action-card open"
           >
-            <span className="action-icon">📂</span>
+            <span className="action-icon"><IconFolder /></span>
             <span className="action-title">{t('startup.open')}</span>
             <span className="action-desc">{t('startup.openDesc')}</span>
           </button>

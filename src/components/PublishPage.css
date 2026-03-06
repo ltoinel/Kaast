@@ -194,10 +194,6 @@
   font-family: var(--font-mono);
 }
 
-/* Actions */
-.publish-actions {
-}
-
 .btn-export {
   width: 100%;
   padding: var(--spacing-lg) var(--spacing-xl);
@@ -255,7 +251,7 @@
 /* Success */
 .publish-success {
   padding: var(--spacing-sm) var(--spacing-md);
-  background: var(--accent-success-muted, rgba(76, 175, 80, 0.1));
+  background: var(--accent-success-muted, rgb(76 175 80 / 10%));
   border-radius: var(--radius-sm);
   color: var(--accent-success, #4caf50);
   font-size: 0.8rem;

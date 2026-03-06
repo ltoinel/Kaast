@@ -3,6 +3,9 @@
 use std::path::Path;
 
 use serde::Deserialize;
+use tracing::info;
+
+use crate::error::{AppError, CmdResult};
 
 // ---------------------------------------------------------------------------
 // Pexels API response structures
@@ -45,7 +48,7 @@ pub async fn search_and_download_pexels_video(
     min_duration: u32,
     project_path: String,
     scene_index: u32,
-) -> Result<String, String> {
+) -> CmdResult<String> {
     let file_name = format!("scene_{:03}.mp4", scene_index);
     let videos_dir = Path::new(&project_path).join("videos");
     let output_path = videos_dir.join(&file_name);
@@ -56,13 +59,11 @@ pub async fn search_and_download_pexels_video(
     }
 
     // Create videos directory if absent
-    std::fs::create_dir_all(&videos_dir)
-        .map_err(|e| format!("Error creating videos directory: {}", e))?;
+    std::fs::create_dir_all(&videos_dir)?;
 
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(120))
-        .build()
-        .map_err(|e| format!("Error creating HTTP client: {}", e))?;
+        .build()?;
 
     // Search Pexels API — require videos at least as long as the scene
     let min_dur_str = min_duration.to_string();
@@ -76,52 +77,48 @@ pub async fn search_and_download_pexels_video(
             ("min_duration", min_dur_str.as_str()),
         ])
         .send()
-        .await
-        .map_err(|e| format!("Pexels API request error: {}", e))?;
+        .await?;
 
     if !search_response.status().is_success() {
-        let status = search_response.status();
-        let error_text = search_response.text().await.unwrap_or_default();
-        return Err(format!("Pexels API error ({}): {}", status, error_text));
+        let status = search_response.status().as_u16();
+        let body = search_response.text().await.unwrap_or_default();
+        return Err(AppError::Api { status, body });
     }
 
-    let pexels_data: PexelsSearchResponse = search_response
-        .json()
-        .await
-        .map_err(|e| format!("Error parsing Pexels response: {}", e))?;
+    let pexels_data: PexelsSearchResponse = search_response.json().await?;
 
     if pexels_data.videos.is_empty() {
-        return Err(format!("No video found on Pexels for: {}", query));
+        return Err(AppError::Other(format!("No video found on Pexels for: {}", query)));
     }
 
     let best_file = select_best_video_file(&pexels_data, min_duration)
-        .ok_or_else(|| "No suitable video file found".to_string())?;
+        .ok_or_else(|| AppError::Other("No suitable video file found".into()))?;
 
-    println!(
-        "Downloading Pexels video: {} (quality: {:?}, width: {:?})",
-        best_file.link, best_file.quality, best_file.width
+    info!(
+        link = %best_file.link,
+        quality = ?best_file.quality,
+        width = ?best_file.width,
+        "Downloading Pexels video"
     );
 
     // Download the video file
     let video_response = client
         .get(&best_file.link)
         .send()
-        .await
-        .map_err(|e| format!("Video download error: {}", e))?;
+        .await?;
 
     if !video_response.status().is_success() {
-        return Err(format!("Video download failed ({})", video_response.status()));
+        return Err(AppError::Api {
+            status: video_response.status().as_u16(),
+            body: "Video download failed".into(),
+        });
     }
 
-    let video_bytes = video_response
-        .bytes()
-        .await
-        .map_err(|e| format!("Error reading video data: {}", e))?;
+    let video_bytes = video_response.bytes().await?;
 
-    std::fs::write(&output_path, &video_bytes)
-        .map_err(|e| format!("Error writing video file: {}", e))?;
+    std::fs::write(&output_path, &video_bytes)?;
 
-    println!("Video saved: {} ({} bytes)", output_path.display(), video_bytes.len());
+    info!(path = %output_path.display(), bytes = video_bytes.len(), "Video saved");
 
     Ok(output_path.to_string_lossy().to_string())
 }

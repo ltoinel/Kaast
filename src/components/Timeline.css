@@ -33,7 +33,7 @@
 
 .timeline-btn {
   padding: var(--spacing-xs) var(--spacing-sm);
-  background: rgba(255, 255, 255, 0.04);
+  background: rgb(255 255 255 / 4%);
   border: 1px solid var(--border-default);
   border-radius: var(--radius-md);
   color: var(--text-muted);
@@ -43,10 +43,10 @@
 }
 
 .timeline-btn:hover {
-  background: rgba(255, 255, 255, 0.08);
+  background: rgb(255 255 255 / 8%);
   border-color: var(--border-strong);
   color: var(--text-primary);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+  box-shadow: 0 2px 8px rgb(0 0 0 / 20%);
 }
 
 .timeline-btn:active {
@@ -63,8 +63,7 @@
 
 .timeline-body {
   flex: 1;
-  overflow-x: auto;
-  overflow-y: auto;
+  overflow: auto;
   position: relative;
   background: var(--bg-primary);
 }
@@ -126,7 +125,7 @@
 }
 
 .playhead.playing {
-  box-shadow: 0 0 8px rgba(224, 112, 32, 0.5);
+  box-shadow: 0 0 8px rgb(224 112 32 / 50%);
 }
 
 .playhead.scrubbing {
@@ -194,7 +193,7 @@
 }
 
 .track-content.drag-over {
-  background: rgba(232, 121, 36, 0.08);
+  background: rgb(232 121 36 / 8%);
   outline: 2px dashed var(--accent-primary);
   outline-offset: -2px;
 }
@@ -207,7 +206,7 @@
   background: var(--accent-primary);
   z-index: 150;
   pointer-events: none;
-  box-shadow: 0 0 6px rgba(232, 121, 36, 0.6);
+  box-shadow: 0 0 6px rgb(232 121 36 / 60%);
 }
 
 .timeline-clip {
@@ -231,7 +230,7 @@
 
 .timeline-clip:hover {
   filter: brightness(1.1);
-  border-color: rgba(255, 255, 255, 0.15);
+  border-color: rgb(255 255 255 / 15%);
 }
 
 .timeline-clip.selected {
@@ -270,7 +269,7 @@
 
 .clip-duration {
   font-size: 0.6rem;
-  color: rgba(255, 255, 255, 0.7);
+  color: rgb(255 255 255 / 70%);
   z-index: 2;
   font-family: var(--font-mono);
 }

@@ -81,9 +81,8 @@
 /* Console Entries */
 .console-entries {
   flex: 1;
-  overflow-y: auto;
-  overflow-x: hidden;
-  font-family: 'JetBrains Mono', 'Fira Code', 'SF Mono', 'Consolas', monospace;
+  overflow: hidden auto;
+  font-family: 'JetBrains Mono', 'Fira Code', 'SF Mono', Consolas, monospace;
   font-size: 0.7rem;
   line-height: 1.5;
 }
@@ -99,12 +98,12 @@
   display: flex;
   gap: var(--spacing-sm);
   padding: 2px var(--spacing-sm);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.03);
-  word-break: break-word;
+  border-bottom: 1px solid rgb(255 255 255 / 3%);
+  overflow-wrap: anywhere;
 }
 
 .console-entry:hover {
-  background: rgba(255, 255, 255, 0.02);
+  background: rgb(255 255 255 / 2%);
 }
 
 .entry-time {
@@ -147,7 +146,7 @@
 
 .console-entry.level-warn {
   color: #e5c07b;
-  background: rgba(229, 165, 10, 0.04);
+  background: rgb(229 165 10 / 4%);
 }
 
 .console-entry.level-warn .entry-level {
@@ -156,7 +155,7 @@
 
 .console-entry.level-error {
   color: #e06c75;
-  background: rgba(255, 68, 68, 0.04);
+  background: rgb(255 68 68 / 4%);
 }
 
 .console-entry.level-error .entry-level {
@@ -173,10 +172,10 @@
 }
 
 .console-entries::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.1);
+  background: rgb(255 255 255 / 10%);
   border-radius: 3px;
 }
 
 .console-entries::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.2);
+  background: rgb(255 255 255 / 20%);
 }

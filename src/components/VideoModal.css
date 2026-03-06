@@ -1,11 +1,8 @@
 /* Video modal */
 .scene-modal-backdrop {
   position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(0, 0, 0, 0.8);
+  inset: 0;
+  background: rgb(0 0 0 / 80%);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -46,6 +43,6 @@
 
 .scene-modal-close:hover {
   background: var(--accent-error);
-  box-shadow: 0 2px 12px rgba(239, 83, 80, 0.3);
+  box-shadow: 0 2px 12px rgb(239 83 80 / 30%);
   transform: scale(1.1);
 }

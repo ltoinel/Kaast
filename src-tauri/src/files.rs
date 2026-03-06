@@ -4,21 +4,22 @@ use std::path::Path;
 
 use base64::{Engine as _, engine::general_purpose};
 
+use crate::error::{AppError, CmdResult};
+
 /// Read a file and return its contents as a base64 data URI.
 /// Bypasses Tauri FS plugin restrictions by using std::fs directly.
 #[tauri::command]
-pub fn read_audio_file(file_path: String) -> Result<String, String> {
+pub fn read_audio_file(file_path: String) -> CmdResult<String> {
     let path = Path::new(&file_path);
 
     if !path.exists() {
-        return Err(format!("File not found: {}", file_path));
+        return Err(AppError::Validation(format!("File not found: {}", file_path)));
     }
 
-    let bytes = std::fs::read(path)
-        .map_err(|e| format!("Error reading file {}: {}", file_path, e))?;
+    let bytes = std::fs::read(path)?;
 
     if bytes.is_empty() {
-        return Err(format!("Empty file: {}", file_path));
+        return Err(AppError::Validation(format!("Empty file: {}", file_path)));
     }
 
     let b64 = general_purpose::STANDARD.encode(&bytes);
