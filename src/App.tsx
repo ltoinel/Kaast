@@ -47,12 +47,13 @@ function App() {
   const [visitedTabs, setVisitedTabs] = useState<Set<TabType>>(new Set(["editor"]));
 
   // ── Custom hooks ──────────────────────────────────────────────────
+  const navigateToEdit = useCallback(() => setActiveTab("edit"), []);
   const {
     audioClips, videoClips, setAudioClips, setVideoClips,
     totalDuration, loadProjectAudioFiles,
     handleAudioGenerated, handleDeleteClip, handleMoveClip,
     handleProduceToTimeline, handleAddMedia,
-  } = useMediaClips(probe, () => setActiveTab("edit"));
+  } = useMediaClips(probe, navigateToEdit);
 
   const resolvedUrls = useResolvedUrls(audioClips, videoClips);
 
@@ -104,17 +105,17 @@ function App() {
     loadTimeline(project.path);
   }, [loadTimeline]);
 
-  const handleNewProject = () => {
+  const handleNewProject = useCallback(() => {
     setCurrentProject(null);
     setProject(null);
     setAudioClips([]);
     setVideoClips([]);
     setShowStartup(true);
-  };
+  }, [setAudioClips, setVideoClips]);
 
-  const handleOpenSettings = () => {
+  const handleOpenSettings = useCallback(() => {
     setActiveTab("settings");
-  };
+  }, []);
 
   // ── Render ────────────────────────────────────────────────────────
 
