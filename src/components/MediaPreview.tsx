@@ -105,7 +105,7 @@ const AudioElement = memo(({ clipId, onRef }: {
   clipId: string;
   onRef: (id: string, el: HTMLAudioElement | null) => void;
 }) => (
-  <audio ref={(el) => onRef(clipId, el)} preload="auto" />
+  <audio ref={(el) => onRef(clipId, el)} preload="metadata" />
 ));
 
 function MediaPreview({ audioClips, videoClips, resolvedUrls, playback, audioOnly, videoOnly }: MediaPreviewProps) {
@@ -384,13 +384,13 @@ function MediaPreview({ audioClips, videoClips, resolvedUrls, playback, audioOnl
             ref={videoARef}
             style={{ ...VIDEO_STYLE, visibility: "visible" }}
             playsInline
-            preload="auto"
+            preload="metadata"
           />
           <video
             ref={videoBRef}
             style={{ ...VIDEO_STYLE, visibility: "hidden" }}
             playsInline
-            preload="auto"
+            preload="metadata"
           />
         </div>
       )}
