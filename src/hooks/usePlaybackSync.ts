@@ -29,6 +29,8 @@ interface UsePlaybackSyncOptions {
 export interface PlaybackHandle {
   /** Precise time ref — read this for media sync (no re-render). */
   timeRef: React.MutableRefObject<number>;
+  /** Precise playing ref — immediately updated on play/pause (no re-render wait). */
+  playingRef: React.MutableRefObject<boolean>;
   /**
    * Snapshot of the current time, updated only on seek / stop.
    * For smooth ~15 fps UI updates during playback, use the
@@ -79,6 +81,8 @@ export function usePlaybackSync({ totalDuration, volume, isActive = true }: UseP
   }, [totalDuration, stopClock]);
 
   const startClock = useCallback(() => {
+    // Cancel any lingering rAF to avoid duplicate tick loops
+    cancelAnimationFrame(rafRef.current);
     playingRef.current = true;
     lastTsRef.current = 0;
     setIsPlaying(true);
@@ -123,6 +127,7 @@ export function usePlaybackSync({ totalDuration, volume, isActive = true }: UseP
 
   return useMemo<PlaybackHandle>(() => ({
     timeRef,
+    playingRef,
     currentTime,
     isPlaying,
     volume,

@@ -135,13 +135,14 @@ function MediaPreview({ audioClips, videoClips, resolvedUrls, playback, audioOnl
   const audioClipsRef = useRef(audioClips);
   const resolvedUrlsRef = useRef(resolvedUrls);
   const volumeRef = useRef(playback.volume);
-  const isPlayingRef = useRef(playback.isPlaying);
+  // Use the master playingRef directly — no local copy needed.
+  const isPlayingRef = playback.playingRef;
 
   videoClipsRef.current = videoClips;
   audioClipsRef.current = audioClips;
   resolvedUrlsRef.current = resolvedUrls;
   volumeRef.current = playback.volume;
-  isPlayingRef.current = playback.isPlaying;
+  // isPlayingRef is now playback.playingRef — updated immediately by stopClock/startClock
 
   // ── Helpers to get active / preload video element ───────────────
   const getActiveVideo = useCallback((): HTMLVideoElement | null => {
@@ -342,6 +343,9 @@ function MediaPreview({ audioClips, videoClips, resolvedUrls, playback, audioOnl
 
   // ── rAF sync loop: runs ONLY while playing ────────────────────
   useEffect(() => {
+    // Always cancel any previous sync loop before starting/stopping
+    cancelAnimationFrame(syncRafRef.current);
+
     if (!playback.isPlaying) {
       // Stopped → one final sync pass so elements stop at the right position
       syncVideo();
@@ -349,7 +353,7 @@ function MediaPreview({ audioClips, videoClips, resolvedUrls, playback, audioOnl
       // Pause all media
       const active = getActiveVideo();
       if (active && !active.paused) active.pause();
-      if (!videoOnly) audioRefs.current.forEach((el) => { if (!el.paused) el.pause(); });
+      if (!videoOnly) audioRefs.current.forEach((el) => { el.pause(); });
       return;
     }
 
